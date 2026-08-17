@@ -1,0 +1,12 @@
+name: Config B - Basic Security
+description: Basic authentication and tool permission scoping
+authentication: true
+tool_permission_scoping: true
+input_validation: false
+output_validation: false
+logging: standard
+allowed_tools:
+  planner: ["none"]
+  research: ["read_file", "web_search"]
+  execution: ["none"]
+  evaluation: ["none"]

@@ -1,0 +1,142 @@
+[
+  {
+    "task_id": "TASK_001",
+    "task": "What is prompt injection and how does it affect AI systems?",
+    "expected_output_type": "summary",
+    "topic_category": "ai_security",
+    "expected_keywords": ["prompt", "injection", "AI", "attack"]
+  },
+  {
+    "task_id": "TASK_002",
+    "task": "Explain the main types of LLM vulnerabilities and their impact",
+    "expected_output_type": "summary",
+    "topic_category": "ai_security",
+    "expected_keywords": ["LLM", "vulnerabilities", "security", "impact"]
+  },
+  {
+    "task_id": "TASK_003",
+    "task": "What are adversarial attacks and how do they work against machine learning models?",
+    "expected_output_type": "summary",
+    "topic_category": "ai_security",
+    "expected_keywords": ["adversarial", "attacks", "machine learning", "models"]
+  },
+  {
+    "task_id": "TASK_004",
+    "task": "Describe the key security challenges in deploying AI systems in production",
+    "expected_output_type": "summary",
+    "topic_category": "ai_security",
+    "expected_keywords": ["security", "AI", "production", "deployment"]
+  },
+  {
+    "task_id": "TASK_005",
+    "task": "What is the Model Context Protocol (MCP) and how does it work?",
+    "expected_output_type": "summary",
+    "topic_category": "mcp_protocol",
+    "expected_keywords": ["MCP", "Model Context Protocol", "architecture", "tools"]
+  },
+  {
+    "task_id": "TASK_006",
+    "task": "Explain how tool calling works in AI systems using MCP",
+    "expected_output_type": "summary",
+    "topic_category": "mcp_protocol",
+    "expected_keywords": ["tool calling", "MCP", "functions", "API"]
+  },
+  {
+    "task_id": "TASK_007",
+    "task": "What are the key components of MCP architecture?",
+    "expected_output_type": "list",
+    "topic_category": "mcp_protocol",
+    "expected_keywords": ["MCP", "architecture", "components", "design"]
+  },
+  {
+    "task_id": "TASK_008",
+    "task": "How does MCP enable communication between LLMs and external tools?",
+    "expected_output_type": "answer",
+    "topic_category": "mcp_protocol",
+    "expected_keywords": ["MCP", "communication", "LLM", "external tools"]
+  },
+  {
+    "task_id": "TASK_009",
+    "task": "What is agent collaboration in multi-agent systems?",
+    "expected_output_type": "summary",
+    "topic_category": "multi_agent",
+    "expected_keywords": ["agent", "collaboration", "multi-agent", "communication"]
+  },
+  {
+    "task_id": "TASK_010",
+    "task": "Explain how LangGraph orchestrates multi-agent workflows",
+    "expected_output_type": "summary",
+    "topic_category": "multi_agent",
+    "expected_keywords": ["LangGraph", "multi-agent", "orchestration", "workflow"]
+  },
+  {
+    "task_id": "TASK_011",
+    "task": "What are the benefits of using multi-agent systems for complex tasks?",
+    "expected_output_type": "list",
+    "topic_category": "multi_agent",
+    "expected_keywords": ["multi-agent", "benefits", "complex tasks", "coordination"]
+  },
+  {
+    "task_id": "TASK_012",
+    "task": "How do agents communicate and coordinate in a multi-agent system?",
+    "expected_output_type": "summary",
+    "topic_category": "multi_agent",
+    "expected_keywords": ["agents", "communication", "coordination", "multi-agent"]
+  },
+  {
+    "task_id": "TASK_013",
+    "task": "What are the Python best practices for writing clean, maintainable code?",
+    "expected_output_type": "list",
+    "topic_category": "python_development",
+    "expected_keywords": ["Python", "best practices", "clean code", "maintainable"]
+  },
+  {
+    "task_id": "TASK_014",
+    "task": "Explain async programming in Python and when to use it",
+    "expected_output_type": "summary",
+    "topic_category": "python_development",
+    "expected_keywords": ["async", "Python", "programming", "concurrency"]
+  },
+  {
+    "task_id": "TASK_015",
+    "task": "What are the key testing frameworks and practices in Python?",
+    "expected_output_type": "summary",
+    "topic_category": "python_development",
+    "expected_keywords": ["testing", "Python", "pytest", "frameworks"]
+  },
+  {
+    "task_id": "TASK_016",
+    "task": "How do type hints improve Python code quality?",
+    "expected_output_type": "answer",
+    "topic_category": "python_development",
+    "expected_keywords": ["type hints", "Python", "code quality", "static typing"]
+  },
+  {
+    "task_id": "TASK_017",
+    "task": "What are the key principles of research methodology in computer science?",
+    "expected_output_type": "summary",
+    "topic_category": "general_research",
+    "expected_keywords": ["research", "methodology", "computer science", "principles"]
+  },
+  {
+    "task_id": "TASK_018",
+    "task": "Explain the structure and components of academic writing in research papers",
+    "expected_output_type": "list",
+    "topic_category": "general_research",
+    "expected_keywords": ["academic writing", "research papers", "structure", "components"]
+  },
+  {
+    "task_id": "TASK_019",
+    "task": "What is benchmarking and why is it important in AI research?",
+    "expected_output_type": "summary",
+    "topic_category": "general_research",
+    "expected_keywords": ["benchmarking", "AI research", "evaluation", "metrics"]
+  },
+  {
+    "task_id": "TASK_020",
+    "task": "How do you design reproducible experiments for AI system evaluation?",
+    "expected_output_type": "summary",
+    "topic_category": "general_research",
+    "expected_keywords": ["reproducible", "experiments", "AI", "evaluation"]
+  }
+]

@@ -1,0 +1,12 @@
+name: Config A - No Security
+description: Baseline configuration with no security measures applied
+authentication: false
+tool_permission_scoping: false
+input_validation: false
+output_validation: false
+logging: basic
+allowed_tools:
+  planner: ["*"]
+  research: ["*"]
+  execution: ["*"]
+  evaluation: ["*"]
