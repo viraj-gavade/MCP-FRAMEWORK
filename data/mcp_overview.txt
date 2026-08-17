@@ -1,0 +1,15 @@
+Model Context Protocol (MCP) Overview
+
+MCP is an open standard introduced by Anthropic in November 2024 that enables AI models to connect with external tools, databases, and services through a standardized protocol.
+
+Architecture:
+- MCP uses a client-server model where AI agents act as clients
+- MCP servers expose tools that agents can discover and call
+- Communication happens via stdio or HTTP transport
+- Tools are described using JSON Schema for input validation
+
+Security considerations noted in MCP documentation:
+- Prompt injection through tool results is a known risk
+- Tool permission scoping is recommended
+- Trust boundaries between clients and servers must be carefully managed
+- Unauthorized tool access is possible without proper authentication

@@ -1,0 +1,17 @@
+Prompt Injection Attack Overview
+
+Prompt injection is a class of attack against large language models where malicious instructions are embedded in input data to override or redirect the model's intended behavior.
+
+Types:
+1. Direct Prompt Injection: Malicious instructions in user input
+2. Indirect Prompt Injection: Malicious instructions in data retrieved by the model
+
+Key research:
+- Perez and Ribeiro (2022) first formally defined prompt injection
+- Greshake et al. (2023) demonstrated indirect injection through web content
+- OWASP lists prompt injection as LLM01 in Top 10 for LLM Applications
+
+Impact in multi-agent systems:
+- An injected instruction in one agent can propagate to downstream agents
+- Tool output poisoning can redirect entire pipeline behavior
+- Detection is difficult because injected content looks like legitimate data

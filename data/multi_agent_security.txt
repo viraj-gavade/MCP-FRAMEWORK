@@ -1,0 +1,19 @@
+Multi-Agent System Security Considerations
+
+Multi-agent AI systems present unique security challenges beyond single-model deployments.
+
+Attack surface expansion:
+- Each agent-to-agent communication is a potential injection point
+- Shared tool access creates cross-agent vulnerability paths
+- Evaluation agents can be compromised to mask attack success
+
+Defense strategies:
+- Tool permission scoping: limit each agent to only the tools it needs
+- Input validation: check all inputs before passing to LLM
+- Output validation: scan all outputs before passing downstream
+- Comprehensive logging: record all tool calls and agent transitions
+
+Research gap:
+- Most existing security research focuses on single-model systems
+- Multi-agent pipeline security with MCP has not been systematically benchmarked
+- No standardized framework exists to evaluate MCP agent security

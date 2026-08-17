@@ -4,13 +4,20 @@ Phase 2: Retrieves information using MCP tools
 
 This agent receives a plan from the Planner Agent and retrieves information
 using either the read_file or web_search MCP tool based on the search query.
+
+MCP PROTOCOL NOTE: This agent communicates with MCP servers via stdio transport
+using the official MCP Python SDK client. Each tool call spawns the MCP server
+as a subprocess and communicates via stdin/stdout as per MCP specification.
+This is verifiable using MCP Inspector: npx @modelcontextprotocol/inspector
 """
 
+import asyncio
 import logging
+import sys
 from typing import Dict, Any
-import subprocess
-import json
-import time
+from pathlib import Path
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -44,46 +51,35 @@ def load_security_config(config_name: str) -> Dict[str, Any]:
     return config
 
 
-def call_mcp_tool(tool_name: str, arguments: Dict[str, str]) -> Dict[str, Any]:
+async def call_mcp_tool(server_script: str, tool_name: str, tool_args: dict) -> str:
     """
-    Call an MCP server tool function directly.
+    Calls a tool on an MCP server via stdio transport.
+    Spawns the server as a subprocess, connects, calls the tool, disconnects.
     
     Args:
+        server_script: Path to the MCP server Python file
         tool_name: Name of the tool to call
-        arguments: Dictionary of tool arguments
+        tool_args: Arguments to pass to the tool
     
     Returns:
-        Dictionary with tool result or error
+        Tool result as string
     """
-    try:
-        # Call the tool directly (simplified for Phase 2)
-        # In production, use proper MCP client protocol
-        if tool_name == "read_file":
-            from mcp_servers.file_read_server import read_file
-            filename = arguments.get("filename", "")
-            result = read_file(filename)
-            
-            if result.startswith("Error:"):
-                return {"success": False, "error": result}
-            
-            return {"success": True, "result": result}
-        
-        elif tool_name == "web_search":
-            from mcp_servers.web_search_server import web_search
-            query = arguments.get("query", "")
-            result = web_search(query)
-            
-            if result.startswith("Error:") or result.startswith("No mock"):
-                return {"success": False, "error": result}
-            
-            return {"success": True, "result": result}
-        
-        else:
-            return {"success": False, "error": f"Unknown tool: {tool_name}"}
+    server_params = StdioServerParameters(
+        command=sys.executable,
+        args=[server_script],
+        env=None
+    )
     
+    try:
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool(tool_name, tool_args)
+                if result.content:
+                    return result.content[0].text
+                return "No result returned from tool"
     except Exception as e:
-        logger.error(f"Error calling MCP tool: {e}")
-        return {"success": False, "error": str(e)}
+        return f"MCP tool call failed: {str(e)}"
 
 
 def research_agent(plan: Dict[str, Any], security_config: str = "config_a") -> Dict[str, Any]:
@@ -113,10 +109,8 @@ def research_agent(plan: Dict[str, Any], security_config: str = "config_a") -> D
     if search_query.startswith("file:"):
         tool_name = "read_file"
         filename = search_query[5:].strip()  # Remove "file:" prefix
-        arguments = {"filename": filename}
     else:
         tool_name = "web_search"
-        arguments = {"query": search_query}
     
     # Security check for Config B and C: tool permission scoping
     if config.get("tool_permission_scoping", False):
@@ -129,20 +123,29 @@ def research_agent(plan: Dict[str, Any], security_config: str = "config_a") -> D
                 "tool_requested": tool_name
             }
     
-    # Call the MCP tool
-    tool_result = call_mcp_tool(tool_name, arguments)
+    # Determine which server to use
+    if search_query.startswith("file:"):
+        filename = search_query[5:].strip()
+        server_script = str(Path(__file__).parent.parent / "mcp_servers" / "file_read_server.py")
+        result = asyncio.run(call_mcp_tool(server_script, "read_file", {"filename": filename}))
+        tool_called = "read_file"
+    else:
+        server_script = str(Path(__file__).parent.parent / "mcp_servers" / "web_search_server.py")
+        result = asyncio.run(call_mcp_tool(server_script, "web_search", {"query": search_query}))
+        tool_called = "web_search"
     
-    if not tool_result.get("success", False):
-        logger.error(f"Tool call failed: {tool_result.get('error', 'Unknown error')}")
+    # Check if tool call failed
+    if result.startswith("Error:") or result.startswith("MCP tool call failed"):
+        logger.error(f"Tool call failed: {result}")
         return {
             "query_used": search_query,
-            "tool_called": tool_name,
+            "tool_called": tool_called,
             "raw_result": "",
             "retrieval_success": False,
-            "error": tool_result.get("error", "Unknown error")
+            "error": result
         }
     
-    raw_result = tool_result.get("result", "")
+    raw_result = result
     
     # Security check for Config C: output validation
     if config.get("output_validation", False):
@@ -151,11 +154,11 @@ def research_agent(plan: Dict[str, Any], security_config: str = "config_a") -> D
             logger.warning(f"Tool output truncated: exceeds {max_length} characters")
             raw_result = raw_result[:max_length] + f"\n\n[TRUNCATED: Output exceeded {max_length} character limit]"
     
-    logger.info(f"Research completed successfully using {tool_name}")
+    logger.info(f"Research completed successfully using {tool_called}")
     
     return {
         "query_used": search_query,
-        "tool_called": tool_name,
+        "tool_called": tool_called,
         "raw_result": raw_result,
         "retrieval_success": True
     }

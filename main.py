@@ -52,17 +52,13 @@ def run_single_task(task: str, security_config: str = "config_a") -> None:
     # Update state with the run_id from collector
     state["run_id"] = run_id
     
-    # End the run (log to CSV)
-    collector.end_run(run_id, state)
+    # End the run (log to CSV) and get latency
+    latency_ms = collector.end_run(run_id, state)
     
     # Print summary
     evaluation = state.get("evaluation_result", {})
     task_completed = evaluation.get("task_completed", False)
     quality_score = evaluation.get("quality_score", 0.0)
-    
-    # Calculate latency
-    import time
-    latency_ms = 0  # Will be calculated by collector
     
     print(f"[{run_id}] Task completed: {task_completed} | Quality: {quality_score:.2f} | Latency: {latency_ms}ms")
 
@@ -112,17 +108,13 @@ def run_baseline_tasks(security_config: str = "config_a") -> None:
         # Update state with the run_id from collector
         state["run_id"] = run_id
         
-        # End the run (log to CSV)
-        collector.end_run(run_id, state)
+        # End the run (log to CSV) and get latency
+        latency_ms = collector.end_run(run_id, state)
         
         # Print summary
         evaluation = state.get("evaluation_result", {})
         task_completed = evaluation.get("task_completed", False)
         quality_score = evaluation.get("quality_score", 0.0)
-        
-        # Get latency from collector (approximate)
-        # In production, this would be returned from end_run
-        latency_ms = 0  # Placeholder
         
         print(f"[{run_id}] Task completed: {task_completed} | Quality: {quality_score:.2f} | Latency: {latency_ms}ms")
         

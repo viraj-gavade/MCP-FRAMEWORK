@@ -1,59 +1,60 @@
 """
-MCP File Read Server
-Phase 2: Model Context Protocol server for file reading operations
+File Read MCP Server
+Phase 2 — MCP Security Research Project
 
-This server exposes a 'read_file' tool that reads files from the local /data/ folder.
-It can be started as a standalone process: python mcp_servers/file_read_server.py
+Runs as a standalone MCP server process using stdio transport.
+Exposes one tool: read_file
+
+Start with:
+    python mcp_servers/file_read_server.py
 """
 
-import logging
 from pathlib import Path
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Define the data folder path
-DATA_FOLDER = Path(__file__).parent.parent / "data"
+from mcp.server.fastmcp import FastMCP
 
 
+DATA_DIR = Path(__file__).parent.parent / "data"
+
+mcp = FastMCP("file-read-server")
+
+
+@mcp.tool()
 def read_file(filename: str) -> str:
     """
-    Read the contents of a file from the data folder.
-    
-    Args:
-        filename: Name of the file to read (without path)
-    
-    Returns:
-        str: File contents or error message
+    Reads a file from the data directory and returns its contents.
     """
-    if not filename:
-        return "Error: filename parameter is required"
-    
-    # Construct full file path
-    file_path = DATA_FOLDER / filename
-    
-    # Security check: ensure file is within data folder
-    try:
-        file_path = file_path.resolve()
-        data_folder_resolved = DATA_FOLDER.resolve()
-        
-        if not str(file_path).startswith(str(data_folder_resolved)):
-            return "Error: Access denied - file must be within the data folder"
-    except Exception as e:
-        return f"Error: Invalid file path - {str(e)}"
-    
-    # Read file contents
+
+    # Security: prevent directory traversal
+    safe_filename = Path(filename).name
+    file_path = DATA_DIR / safe_filename
+
+    # Create data directory if it doesn't exist
+    if not DATA_DIR.exists():
+        DATA_DIR.mkdir(parents=True)
+
+        return "Error: data directory was empty, now created"
+
+    # Check whether requested file exists
     if not file_path.exists():
-        return f"Error: File '{filename}' not found in data folder"
-    
+        available = [
+            file.name
+            for file in DATA_DIR.iterdir()
+            if file.is_file()
+        ]
+
+        return (
+            f"Error: file '{safe_filename}' not found. "
+            f"Available: {available}"
+        )
+
+    # Read file
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-        
-        logger.info(f"Successfully read file: {filename}")
-        return content
-    
+        return file_path.read_text(encoding="utf-8")
+
     except Exception as e:
-        logger.error(f"Error reading file {filename}: {str(e)}")
-        return f"Error: Could not read file '{filename}' - {str(e)}"
+        return f"Error reading file: {str(e)}"
+
+
+if __name__ == "__main__":
+    mcp.run()

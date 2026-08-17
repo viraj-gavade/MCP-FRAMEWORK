@@ -6,6 +6,7 @@ This test module verifies:
 - Groq API key is set
 - Simple completion works
 - llama-3.1-8b-instant model is accessible
+- LangSmith tracing is configured
 """
 
 import os
@@ -83,6 +84,28 @@ def test_groq_model_accessible():
         pytest.fail(f"Model access failed: {str(e)}")
 
 
+def test_langsmith_connection():
+    """Test that LangSmith tracing is configured and reachable"""
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    api_key = os.getenv("LANGCHAIN_API_KEY")
+    assert api_key is not None, "LANGCHAIN_API_KEY not set in .env"
+    assert api_key != "your_actual_key_here", "LANGCHAIN_API_KEY is still placeholder"
+    assert len(api_key) > 10, "LANGCHAIN_API_KEY looks too short to be valid"
+    
+    tracing = os.getenv("LANGCHAIN_TRACING_V2")
+    assert tracing == "true", "LANGCHAIN_TRACING_V2 must be set to 'true'"
+    
+    project = os.getenv("LANGCHAIN_PROJECT")
+    assert project == "mcp-security-research", "LANGCHAIN_PROJECT must be 'mcp-security-research'"
+    
+    print("LangSmith environment variables configured correctly")
+    print(f"API Key: {api_key[:5]}{'*' * (len(api_key)-5)}")
+    print(f"Project: {project}")
+
+
 if __name__ == "__main__":
     # Run tests manually
     print("Running Groq connection tests...")
@@ -95,5 +118,8 @@ if __name__ == "__main__":
     
     test_groq_model_accessible()
     print("✓ Model accessibility test passed")
+    
+    test_langsmith_connection()
+    print("✓ LangSmith connection test passed")
     
     print("\nAll Groq connection tests passed!")

@@ -104,13 +104,16 @@ class MetricsCollector:
         logger.info(f"Started tracking run: {run_id}")
         return run_id
     
-    def end_run(self, run_id: str, state: AgentState) -> None:
+    def end_run(self, run_id: str, state: AgentState) -> int:
         """
         Log a completed pipeline run to the CSV.
         
         Args:
             run_id: Unique run ID from start_run()
             state: Final state from the pipeline
+        
+        Returns:
+            Latency in milliseconds
         """
         # Calculate latency
         start_time = self._run_start_times.get(run_id, time.time())
@@ -168,6 +171,8 @@ class MetricsCollector:
         # Clean up start time
         if run_id in self._run_start_times:
             del self._run_start_times[run_id]
+        
+        return latency_ms
     
     def get_summary(self) -> Dict[str, Any]:
         """

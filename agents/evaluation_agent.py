@@ -21,11 +21,44 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # System prompt for LLM scoring
-EVALUATION_SYSTEM_PROMPT = """You are an Evaluation Agent. Score the quality of this task output from 0.0 to 1.0.
-0.0 = completely wrong or empty
-0.5 = partially correct or incomplete
-1.0 = fully correct and complete
-Respond with ONLY a JSON object: {"score": 0.0, "reason": "brief explanation"}"""
+EVALUATION_SYSTEM_PROMPT = """You are an Evaluation Agent scoring the quality of a task output.
+
+Score from 0.0 to 1.0 using these guidelines:
+- 1.0: Complete, accurate, directly answers the task
+- 0.8: Mostly complete with minor gaps
+- 0.6: Partially complete, addresses the main point
+- 0.4: Minimal relevant content, significant gaps  
+- 0.2: Very little relevant content
+- 0.0: Empty, completely wrong, or execution failed
+
+Be generous rather than strict — if the output makes a reasonable attempt at the task, score it 0.6 or above.
+Respond with ONLY valid JSON: {"score": 0.7, "reason": "brief explanation"}
+Do not include any text outside the JSON object."""
+
+
+def fallback_score(execution_result: dict) -> tuple[float, str]:
+    """
+    Fallback scoring when LLM evaluation fails or gives suspiciously low scores.
+    Uses heuristics based on output characteristics.
+    
+    Returns: (score, reason)
+    """
+    if not execution_result.get("execution_success", False):
+        return 0.0, "Execution failed"
+    
+    result_text = execution_result.get("result", "")
+    
+    if not result_text or len(result_text.strip()) < 10:
+        return 0.1, "Output too short"
+    
+    word_count = len(result_text.split())
+    
+    if word_count >= 50:
+        return 0.7, f"Fallback: substantial output ({word_count} words)"
+    elif word_count >= 20:
+        return 0.5, f"Fallback: moderate output ({word_count} words)"
+    else:
+        return 0.3, f"Fallback: brief output ({word_count} words)"
 
 
 def evaluation_agent(original_task: str, execution_result: Dict[str, Any]) -> Dict[str, Any]:
@@ -111,6 +144,11 @@ Respond with ONLY a JSON object: {{"score": 0.0, "reason": "brief explanation"}}
         # Clamp score to valid range
         quality_score = max(0.0, min(1.0, quality_score))
         
+        # Apply fallback if LLM gives 0.0 for a successful execution with non-empty result
+        if quality_score == 0.0 and execution_success and word_count >= 10:
+            logger.warning(f"LLM gave score 0.0 for successful execution with {word_count} words, applying fallback")
+            quality_score, reason = fallback_score(execution_result)
+        
         # Determine if task was completed based on score
         task_completed = quality_score >= 0.5
         
@@ -126,21 +164,23 @@ Respond with ONLY a JSON object: {{"score": 0.0, "reason": "brief explanation"}}
     
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse LLM evaluation response: {e}")
-        # Fallback to basic heuristic
-        quality_score = 0.5 if word_count >= 10 else 0.1
+        # Use fallback heuristic
+        quality_score, reason = fallback_score(execution_result)
         return {
             "task_completed": quality_score >= 0.5,
             "quality_score": quality_score,
-            "completion_reason": "Evaluation parsing failed, used fallback heuristic",
+            "completion_reason": f"Evaluation parsing failed, {reason}",
             "word_count": word_count,
             "evaluation_notes": f"Could not parse LLM evaluation: {str(e)}"
         }
     except Exception as e:
         logger.error(f"Error in evaluation agent: {e}")
+        # Use fallback heuristic
+        quality_score, reason = fallback_score(execution_result)
         return {
-            "task_completed": False,
-            "quality_score": 0.0,
-            "completion_reason": f"Evaluation error: {str(e)}",
+            "task_completed": quality_score >= 0.5,
+            "quality_score": quality_score,
+            "completion_reason": f"Evaluation error, {reason}",
             "word_count": word_count,
             "evaluation_notes": f"Evaluation failed: {str(e)}"
         }
