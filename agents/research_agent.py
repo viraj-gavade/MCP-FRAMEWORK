@@ -106,11 +106,43 @@ def research_agent(plan: Dict[str, Any], security_config: str = "config_a") -> D
     # Determine which tool to use
     search_query = plan.get("search_query", "")
     
+    # Input validation for tool parameters
+    if not search_query or not search_query.strip():
+        logger.warning("Empty search query provided")
+        return {
+            "error": "Invalid tool parameters",
+            "reason": "search query is empty"
+        }
+    
     if search_query.startswith("file:"):
         tool_name = "read_file"
         filename = search_query[5:].strip()  # Remove "file:" prefix
+        
+        # Validate filename parameter
+        if not filename:
+            logger.warning("Empty filename provided")
+            return {
+                "error": "Invalid tool parameters",
+                "reason": "filename is empty"
+            }
+        
+        # Basic filename validation - prevent path traversal
+        if ".." in filename or "/" in filename or "\\" in filename:
+            logger.warning(f"Invalid filename with path traversal attempt: {filename}")
+            return {
+                "error": "Invalid tool parameters",
+                "reason": "filename contains invalid characters"
+            }
     else:
         tool_name = "web_search"
+        
+        # Validate query parameter
+        if len(search_query) > 1000:
+            logger.warning(f"Search query too long: {len(search_query)} characters")
+            return {
+                "error": "Invalid tool parameters",
+                "reason": "search query exceeds maximum length of 1000 characters"
+            }
     
     # Security check for Config B and C: tool permission scoping
     if config.get("tool_permission_scoping", False):
@@ -120,7 +152,8 @@ def research_agent(plan: Dict[str, Any], security_config: str = "config_a") -> D
             logger.warning(f"Tool '{tool_name}' not permitted for research agent")
             return {
                 "error": "Tool not permitted",
-                "tool_requested": tool_name
+                "tool_requested": tool_name,
+                "security_events": {"permission_denied": True}
             }
     
     # Determine which server to use
@@ -147,18 +180,26 @@ def research_agent(plan: Dict[str, Any], security_config: str = "config_a") -> D
     
     raw_result = result
     
-    # Security check for Config C: output validation
+    # Security check for Config B and C: output validation
+    output_truncated = False
     if config.get("output_validation", False):
-        max_length = 2000
+        max_length = config.get("max_output_length", 2000)
         if len(raw_result) > max_length:
             logger.warning(f"Tool output truncated: exceeds {max_length} characters")
             raw_result = raw_result[:max_length] + f"\n\n[TRUNCATED: Output exceeded {max_length} character limit]"
+            output_truncated = True
     
     logger.info(f"Research completed successfully using {tool_called}")
     
-    return {
+    result_dict = {
         "query_used": search_query,
         "tool_called": tool_called,
         "raw_result": raw_result,
         "retrieval_success": True
     }
+    
+    # Record output validation event if truncated
+    if output_truncated:
+        result_dict["security_events"] = {"output_validation_failed": True}
+    
+    return result_dict

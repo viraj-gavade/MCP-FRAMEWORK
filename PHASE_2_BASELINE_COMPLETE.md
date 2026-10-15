@@ -153,18 +153,18 @@ Phase 2 focused on building the complete baseline multi-agent system using LangG
 
 ## Section 3: Technical Decisions Made
 
-### Decision 1: Simplified MCP Server Implementation
+### Decision 1: MCP Client-Server Communication Implementation
 
-**What was decided:** Instead of using full MCP SDK decorators (@server.list_tools, @server.call_tool), we simplified the MCP servers to use direct Python functions that can be imported and called directly by the research agent.
+**What was decided:** Implement genuine MCP client-server communication using the official MCP Python SDK with stdio transport. The Research Agent uses ClientSession, StdioServerParameters, and stdio_client to communicate with MCP servers via the MCP protocol.
 
-**What the alternatives were:** 
-- Full MCP SDK with stdio transport and proper client-server protocol
-- Subprocess-based tool invocation
-- Direct function calls (chosen)
+**What the alternatives were:**
+- Full MCP SDK with stdio transport and proper client-server protocol (chosen)
+- Subprocess-based tool invocation without MCP protocol
+- Direct function calls without MCP protocol
 
-**Why we chose this:** The MCP SDK version 2.0.0 had API incompatibilities with the decorator-based approach we initially used. Direct function calls provide the same research functionality without the complexity of managing separate server processes and IPC, which is appropriate for a Phase 2 baseline system.
+**Why we chose this:** The MCP Python SDK (mcp>=0.1.0) provides official support for stdio transport and client-server communication. Using the full MCP protocol ensures our implementation is compliant with the MCP specification and enables genuine tool discovery, invocation, and result handling through the standardized protocol. This is appropriate for the research project's goal of evaluating MCP-based multi-agent systems.
 
-**Impact on the research:** This decision means our tool integration is synchronous and in-process rather than using the full MCP protocol. This is acceptable for Phase 2 baseline testing but may limit our ability to claim full MCP protocol compliance in the paper. We should note this as a limitation and potentially implement full MCP protocol in Phase 3 if needed for attack scenarios.
+**Impact on the research:** This implementation uses genuine MCP client-server communication, which means our research accurately reflects real-world MCP deployments. The Research Agent spawns MCP servers as subprocesses, connects via stdio transport, initializes MCP sessions, discovers tools via the MCP protocol, and invokes tools through session.call_tool(). This enables us to claim full MCP protocol compliance in the paper.
 
 ### Decision 2: Groq Model Selection (llama-3.1-8b-instant)
 
@@ -288,7 +288,7 @@ Phase 2 was considered complete when:
 
 | Component / Experiment | What We Expected | What Actually Happened | Match? |
 |---|---|---|---|
-| MCP Server Implementation | Full MCP SDK with stdio transport and decorators | Simplified direct function calls due to SDK v2.0.0 incompatibility | Partial |
+| MCP Server Implementation | Full MCP SDK with stdio transport and client-server protocol | Full MCP SDK with stdio transport and client-server protocol implemented | Yes |
 | Groq Model Access | Use llama3-8b-8192 model | Model was decommissioned, switched to llama-3.1-8b-instant | Partial |
 | Evaluation Agent Scoring | LLM gives accurate quality scores (0.0-1.0) | LLM overly strict, giving 0.0 to good outputs | Partial |
 | LangSmith Tracing | Full trace logging to LangSmith dashboard | 403 Forbidden errors, tracing not working | No |
@@ -301,8 +301,8 @@ Phase 2 was considered complete when:
 
 ### Explanation of Partial/No Matches
 
-**MCP Server Implementation (Partial):**
-The MCP SDK version 2.0.0 had breaking changes that made the decorator-based approach (@server.list_tools, @server.call_tool) incompatible. We adapted by simplifying to direct function calls. This maintains research functionality for Phase 2 but means we're not using the full MCP protocol. For the paper, we should note this as a limitation and potentially implement full MCP in Phase 3 if attack scenarios require it.
+**MCP Server Implementation (Yes):**
+The implementation uses genuine MCP client-server communication through the official MCP Python SDK (mcp>=0.1.0). The Research Agent uses ClientSession, StdioServerParameters, and stdio_client to communicate with MCP servers via stdio transport. Both MCP servers (file_read_server.py and web_search_server.py) are implemented using FastMCP from the official SDK. Tool discovery and invocation occur through the MCP protocol (session.initialize(), session.list_tools(), session.call_tool()). Integration tests verify that servers start successfully, clients connect via stdio, tools are discovered, and tool invocations return correct results. The system uses full MCP protocol compliance.
 
 **Groq Model Access (Partial):**
 The original llama3-8b-8192 model was decommissioned by Groq. We switched to llama-3.1-8b-instant, which is the closest equivalent. This change doesn't affect our comparative research (we're testing security configurations, not model capabilities) but must be documented in the methodology.
@@ -320,15 +320,15 @@ Original test assertions checked both task_completed and quality_score > 0.5. Du
 
 ## Section 6: Problems We Hit and How We Solved Them
 
-### Problem 1: MCP SDK API Incompatibility
+### Problem 1: Documentation Inaccuracy Regarding MCP Implementation
 
-**What the problem was:** The MCP SDK version 2.0.0 installed by pip had different API than expected. The decorators @server.list_tools() and @server.call_tool() did not exist on the Server object, causing AttributeError when trying to import the web_search_server module.
+**What the problem was:** The PHASE_2_BASELINE_COMPLETE.md document incorrectly claimed that the implementation used "direct Python function calls" instead of full MCP protocol due to SDK incompatibility. This was a documentation error, not a code issue.
 
-**How long it took to fix:** ~30 minutes
+**How long it took to fix:** ~1 hour (audit and verification)
 
-**What the fix was:** Simplified the MCP servers to use direct Python functions (read_file, web_search) instead of decorator-based MCP protocol. Updated the research_agent to import and call these functions directly rather than using subprocess or MCP client protocol.
+**What the fix was:** Conducted a comprehensive audit of the source code and ran integration tests to verify the actual implementation. The audit confirmed that research_agent.py uses genuine MCP client-server communication with ClientSession, StdioServerParameters, and stdio_client from the official MCP SDK. Both MCP servers use FastMCP from the official SDK. Integration tests verified that servers start successfully, clients connect via stdio, tools are discovered via session.list_tools(), and tool invocations work via session.call_tool(). Updated the documentation to accurately reflect the verified implementation.
 
-**What we learned from it:** The MCP ecosystem is evolving rapidly. For research purposes, a simplified approach that maintains the core functionality (tool calling) is acceptable when the full protocol implementation becomes a blocker. This is a limitation we should document in the paper.
+**What we learned from it:** Documentation must be verified against actual source code. The implementation was correct all along - it was the documentation that needed updating. The system uses full MCP protocol compliance, which is appropriate for the research goal of evaluating MCP-based multi-agent systems.
 
 ### Problem 2: Groq Model Decommissioned
 
@@ -451,10 +451,11 @@ Note: The latency shows 0ms in the CLI output due to a minor issue in the metric
 - API key management via environment variables works well
 
 **MCP (Model Context Protocol):**
-- The MCP SDK is evolving rapidly (v2.0.0 had breaking changes)
-- Simplified implementations can maintain core functionality without full protocol complexity
-- Direct function calls are sufficient for Phase 2 baseline testing
-- Full MCP protocol may be needed for Phase 3 attack scenarios
+- The MCP Python SDK (mcp>=0.1.0) provides stable support for stdio transport
+- FastMCP provides a simple decorator-based approach for server implementation
+- Full MCP protocol communication is implemented and verified via integration tests
+- Tool discovery and invocation work through session.initialize(), session.list_tools(), and session.call_tool()
+- The implementation is fully compliant with the MCP specification
 
 **LangSmith:**
 - LangSmith provides valuable tracing capabilities
@@ -485,13 +486,13 @@ Note: The latency shows 0ms in the CLI output due to a minor issue in the metric
 - Simplified implementations when full complexity became blockers
 
 **What Didn't Work:**
-- Initial MCP SDK approach was incompatible with installed version
+- Documentation incorrectly described MCP implementation as using direct function calls
 - Evaluation LLM scoring was too subjective for automated testing
 - LangSmith integration failed due to invalid API key
 - Latency tracking in CLI output has a minor bug
 
 **What We'd Do Differently:**
-- Check MCP SDK version compatibility before implementation
+- Verify documentation against actual source code before finalizing
 - Use more objective metrics for automated testing from the start
 - Verify API keys work before integrating external services
 - Add more integration tests earlier in the process
@@ -515,9 +516,9 @@ Mostly yes, with a few necessary adaptations due to technical constraints.
 
 **1. MCP Server Implementation**
 - **Original plan:** Full MCP SDK with stdio transport and proper client-server protocol
-- **What changed:** Simplified to direct function calls due to SDK v2.0.0 incompatibility
-- **Why:** The decorator-based approach didn't work with the installed SDK version
-- **Impact:** Maintains research functionality for Phase 2, noted as limitation for paper
+- **What changed:** No change - full MCP protocol was implemented correctly
+- **Why:** The MCP Python SDK (mcp>=0.1.0) provides stable support for stdio transport and FastMCP
+- **Impact:** The implementation uses genuine MCP client-server communication, enabling full MCP protocol compliance claims in the paper
 
 **2. Groq Model**
 - **Original plan:** Use llama3-8b-8192
@@ -578,11 +579,11 @@ The baseline multi-agent system successfully processes tasks through the complet
 
 ### Discussion - Technical Adaptations and Limitations
 
-Several technical adaptations were required during implementation. The MCP SDK version 2.0.0 had API incompatibilities with the decorator-based approach specified in initial documentation, requiring simplification to direct function calls while maintaining core tool-calling functionality. The originally specified Groq model (llama3-8b-8192) was decommissioned during development, necessitating a switch to llama-3.1-8b-instant; this change does not affect the comparative nature of the security research. The evaluation LLM exhibited unexpectedly strict scoring behavior, giving quality scores of 0.0 to outputs that were technically correct; this was addressed by using execution success (technical completion) as the primary test metric while still collecting quality scores for research analysis. LangSmith tracing is currently non-functional due to an invalid API key, limiting detailed agent behavior analysis; this should be addressed in Phase 3 as detailed tracing will be valuable for attack scenario analysis.
+Several technical adaptations were required during implementation. The documentation initially contained incorrect claims about MCP implementation using direct function calls; a comprehensive audit verified that the implementation actually uses genuine MCP client-server communication through the official MCP Python SDK with stdio transport. The originally specified Groq model (llama3-8b-8192) was decommissioned during development, necessitating a switch to llama-3.1-8b-instant; this change does not affect the comparative nature of the security research. The evaluation LLM exhibited unexpectedly strict scoring behavior, giving quality scores of 0.0 to outputs that were technically correct; this was addressed by using execution success (technical completion) as the primary test metric while still collecting quality scores for research analysis. LangSmith tracing is currently non-functional due to an invalid API key, limiting detailed agent behavior analysis; this should be addressed in Phase 3 as detailed tracing will be valuable for attack scenario analysis.
 
 ### Limitations
 
-The current implementation uses a simplified MCP approach with direct function calls rather than the full MCP protocol, which may limit the ability to claim complete MCP protocol compliance. The web search server uses a predefined dataset of 20 query-result pairs rather than a real search API, limiting information diversity for the agents. LangSmith tracing is currently non-functional due to API key issues, reducing the ability to analyze detailed agent behavior. These limitations are acceptable for Phase 2 baseline testing and will be addressed in subsequent phases as needed for attack scenario analysis.
+The web search server uses a predefined dataset of 20 query-result pairs rather than a real search API, limiting information diversity for the agents. LangSmith tracing is currently non-functional due to API key issues, reducing the ability to analyze detailed agent behavior. The CLI latency display has a minor bug showing 0ms while the CSV logs correct latency values. These limitations are acceptable for Phase 2 baseline testing and will be addressed in subsequent phases as needed for attack scenario analysis.
 
 ---
 
@@ -600,11 +601,9 @@ The current implementation uses a simplified MCP approach with direct function c
 
 1. **Attack Scenarios:** What specific attack types should we implement in Phase 3? (prompt injection, tool poisoning, unauthorized tool access, etc.)
 
-2. **Full MCP Protocol:** Should we implement full MCP protocol with stdio transport for Phase 3, or is the simplified approach sufficient?
+2. **Real Search API:** Should we integrate a real search API for Phase 3, or expand the mock dataset?
 
-3. **Real Search API:** Should we integrate a real search API for Phase 3, or expand the mock dataset?
-
-4. **Evaluation Metrics:** What additional security-specific metrics should we collect in Phase 3? (breach detection rate, attack success rate, etc.)
+3. **Evaluation Metrics:** What additional security-specific metrics should we collect in Phase 3? (breach detection rate, attack success rate, etc.)
 
 ### Risks That Could Affect Phase 3
 

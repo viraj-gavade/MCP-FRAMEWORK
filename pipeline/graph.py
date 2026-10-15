@@ -7,16 +7,19 @@ planner → research → execution → evaluation
 """
 
 import logging
+import time
 import uuid
 from typing import TypedDict, Optional, Dict, Any
 from langgraph.graph import StateGraph, END
 
-from agents.planner_agent import planner_agent
+from agents.planner_agent import planner_agent, load_security_config
 from agents.research_agent import research_agent
 from agents.execution_agent import execution_agent
 from agents.evaluation_agent import evaluation_agent
+from security.auth import check_authentication
+from security.logging_config import configure_logging
 
-# Configure logging
+# Configure logging (will be reconfigured based on security config in run_pipeline)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,7 @@ class AgentState(TypedDict):
         run_id: Unique identifier for this pipeline run
         errors: List of errors encountered during execution
         attack_injected: Whether an attack was injected (Phase 3, always False in Phase 2)
+        security_events: Dictionary tracking security events (auth_success, permission_denied, etc.)
     """
     # Input
     user_task: str
@@ -50,6 +54,7 @@ class AgentState(TypedDict):
     run_id: str
     errors: list[str]
     attack_injected: bool
+    security_events: Dict[str, Any]
 
 
 def planner_node(state: AgentState) -> AgentState:
@@ -221,13 +226,18 @@ def create_graph() -> StateGraph:
     return compiled_graph
 
 
-def run_pipeline(user_task: str, security_config: str = "config_a") -> Dict[str, Any]:
+def run_pipeline(
+    user_task: str,
+    security_config: str = "config_a",
+    auth_token: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Run the full multi-agent pipeline for a given task.
     
     Args:
         user_task: The user task to process
         security_config: Security configuration name (config_a, config_b, config_c)
+        auth_token: Optional authentication credential. Falls back to AUTH_TOKEN env var if None.
     
     Returns:
         Dictionary containing the final state with all agent outputs
@@ -237,7 +247,31 @@ def run_pipeline(user_task: str, security_config: str = "config_a") -> Dict[str,
     
     logger.info(f"[{run_id}] Starting pipeline for task: {user_task[:50]}...")
     
-    # Initialize state
+    # Load security configuration for authentication check
+    config = load_security_config(security_config)
+    
+    # Configure logging based on security configuration
+    configure_logging(config)
+    
+    # Check authentication if enabled
+    authenticated, auth_error = check_authentication(config, auth_token=auth_token)
+    if not authenticated:
+        logger.error(f"[{run_id}] Authentication failed: {auth_error}")
+        # Return error state without running pipeline
+        return {
+            "user_task": user_task,
+            "security_config": security_config,
+            "plan": {"error": f"Authentication failed: {auth_error}"},
+            "research_result": None,
+            "execution_result": None,
+            "evaluation_result": None,
+            "run_id": run_id,
+            "errors": [f"Authentication failed: {auth_error}"],
+            "attack_injected": False,
+            "security_events": {"auth_success": False}
+        }
+    
+    # Initialize state with security events tracking
     initial_state: AgentState = {
         "user_task": user_task,
         "security_config": security_config,
@@ -247,7 +281,13 @@ def run_pipeline(user_task: str, security_config: str = "config_a") -> Dict[str,
         "evaluation_result": None,
         "run_id": run_id,
         "errors": [],
-        "attack_injected": False  # Phase 2: always False
+        "attack_injected": False,  # Phase 2: always False
+        "security_events": {
+            "auth_success": True,  # Auth passed if we reach here
+            "permission_denied": False,
+            "input_validation_failed": False,
+            "output_validation_failed": False
+        }
     }
     
     # Create and run the graph

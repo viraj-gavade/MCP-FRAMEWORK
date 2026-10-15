@@ -1,6 +1,7 @@
 name: Config C - Hardened
 description: Full security with authentication, scoping, and validation
 authentication: true
+expected_auth_secret: "$AUTH_SECRET"
 tool_permission_scoping: true
 input_validation: true
 output_validation: true
@@ -13,3 +14,4 @@ allowed_tools:
 max_tool_calls_per_run: 3
 max_input_length: 500
 block_keywords: ["ignore previous", "disregard", "override", "forget instructions", "new instruction"]
+max_output_length: 2000

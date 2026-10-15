@@ -1,12 +1,14 @@
 name: Config B - Basic Security
 description: Basic authentication and tool permission scoping
 authentication: true
+expected_auth_secret: "$AUTH_SECRET"
 tool_permission_scoping: true
 input_validation: false
-output_validation: false
+output_validation: true
 logging: standard
 allowed_tools:
   planner: ["none"]
   research: ["read_file", "web_search"]
   execution: ["none"]
   evaluation: ["none"]
+max_output_length: 5000

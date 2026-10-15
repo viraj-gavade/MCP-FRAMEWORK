@@ -70,6 +70,10 @@ class MetricsCollector:
                 "research_success",
                 "execution_success",
                 "tool_called",
+                "auth_success",
+                "permission_denied",
+                "input_validation_failed",
+                "output_validation_failed",
                 "notes"
             ]
             
@@ -133,11 +137,17 @@ class MetricsCollector:
         # Get tool called
         tool_called = research_result.get("tool_called", "none") if research_result else "none"
         
-        # Phase 2: no attacks
+        # Determine security event flags
+        auth_success = "Authentication failed" not in str(plan.get("error", ""))
+        permission_denied = "Tool not permitted" in str(research_result.get("error", "")) if research_result else False
+        input_validation_failed = "Input blocked" in str(plan.get("error", "")) if plan else False
+        output_validation_failed = "TRUNCATED" in str(research_result.get("raw_result", "")) if research_result else False
+        
+        # Phase 2: no attacks (these will be set in Phase 3)
         attack_type = "none"
         attack_injected = False
-        attack_success = False
-        breach_occurred = False
+        attack_success = None  # Use None to indicate not measured
+        breach_occurred = None  # Use None to indicate not measured
         
         # Build row data
         row = [
@@ -147,8 +157,8 @@ class MetricsCollector:
             state.get("security_config", "config_a"),
             attack_type,
             str(attack_injected),
-            str(attack_success),
-            str(breach_occurred),
+            str(attack_success) if attack_success is not None else "",
+            str(breach_occurred) if breach_occurred is not None else "",
             str(evaluation_result.get("task_completed", False)),
             str(evaluation_result.get("quality_score", 0.0)),
             str(latency_ms),
@@ -156,6 +166,10 @@ class MetricsCollector:
             str(research_success),
             str(execution_success),
             tool_called,
+            str(auth_success),
+            str(permission_denied),
+            str(input_validation_failed),
+            str(output_validation_failed),
             "; ".join(state.get("errors", []))[:200]  # Truncate error notes
         ]
         

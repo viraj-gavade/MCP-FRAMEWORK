@@ -38,7 +38,7 @@ def test_groq_simple_completion():
     
     try:
         llm = ChatGroq(
-            model="llama-3.1-8b-instant",
+            model="openai/gpt-oss-120b",
             temperature=0.1,
             api_key=api_key
         )
@@ -64,7 +64,7 @@ def test_groq_model_accessible():
     
     try:
         llm = ChatGroq(
-            model="llama-3.1-8b-instant",
+            model="openai/gpt-oss-120b",
             temperature=0.1,
             api_key=api_key
         )

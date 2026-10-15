@@ -107,7 +107,7 @@ def evaluation_agent(original_task: str, execution_result: Dict[str, Any]) -> Di
     
     # Use LLM to score quality
     llm = ChatGroq(
-        model="llama-3.1-8b-instant",
+        model="openai/gpt-oss-120b",
         temperature=0.1
     )
     

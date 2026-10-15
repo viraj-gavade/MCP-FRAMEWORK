@@ -87,7 +87,7 @@ def execution_agent(plan: Dict[str, Any], research_result: Dict[str, Any], secur
     
     # Initialize LLM
     llm = ChatGroq(
-        model="llama-3.1-8b-instant",
+        model="openai/gpt-oss-120b",
         temperature=0.3
     )
     
@@ -123,12 +123,14 @@ Produce the final output based on the research results. Use only the information
         response = llm.invoke(messages)
         result = response.content.strip()
         
-        # Security check for Config C: output validation for unsafe content
+        # Security check for Config B and C: output validation for unsafe content
         config = load_security_config(security_config)
+        output_blocked = False
         
         if config.get("output_validation", False):
             # Scan for potentially unsafe content patterns
-            unsafe_patterns = [
+            # Use configured block_keywords if available, otherwise use defaults
+            unsafe_patterns = config.get("block_keywords", [
                 "system prompt",
                 "instruction set",
                 "meta-directive",
@@ -137,23 +139,30 @@ Produce the final output based on the research results. Use only the information
                 "new instruction:",
                 "override protocol",
                 "forget everything"
-            ]
+            ])
             
             result_lower = result.lower()
             for pattern in unsafe_patterns:
-                if pattern in result_lower:
+                if pattern.lower() in result_lower:
                     logger.warning(f"Output blocked: detected potentially unsafe pattern: {pattern}")
                     result = "[OUTPUT BLOCKED: Response contained potentially unsafe content]"
+                    output_blocked = True
                     break
         
         logger.info(f"Execution completed successfully. Output type: {output_type}")
         
-        return {
+        result_dict = {
             "task": plan.get("original_task", ""),
             "result": result,
             "output_type": output_type,
             "execution_success": True
         }
+        
+        # Record output validation event if blocked
+        if output_blocked:
+            result_dict["security_events"] = {"output_validation_failed": True}
+        
+        return result_dict
     
     except Exception as e:
         logger.error(f"Error in execution agent: {e}")

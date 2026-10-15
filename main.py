@@ -14,6 +14,7 @@ import json
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
 from pipeline.graph import run_pipeline
@@ -30,13 +31,14 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 
-def run_single_task(task: str, security_config: str = "config_a") -> None:
+def run_single_task(task: str, security_config: str = "config_a", auth_token: Optional[str] = None) -> None:
     """
     Run a single task through the pipeline.
     
     Args:
         task: The user task to process
         security_config: Security configuration name
+        auth_token: Optional authentication token (defaults to AUTH_TOKEN env var)
     """
     logger.info(f"Running single task with config: {security_config}")
     
@@ -47,7 +49,7 @@ def run_single_task(task: str, security_config: str = "config_a") -> None:
     run_id = collector.start_run(task, security_config)
     
     # Run the pipeline
-    state = run_pipeline(task, security_config)
+    state = run_pipeline(task, security_config, auth_token=auth_token)
     
     # Update state with the run_id from collector
     state["run_id"] = run_id
@@ -63,12 +65,13 @@ def run_single_task(task: str, security_config: str = "config_a") -> None:
     print(f"[{run_id}] Task completed: {task_completed} | Quality: {quality_score:.2f} | Latency: {latency_ms}ms")
 
 
-def run_baseline_tasks(security_config: str = "config_a") -> None:
+def run_baseline_tasks(security_config: str = "config_a", auth_token: Optional[str] = None) -> None:
     """
     Run all 20 baseline tasks from the benchmark dataset.
     
     Args:
         security_config: Security configuration name
+        auth_token: Optional authentication token (defaults to AUTH_TOKEN env var)
     """
     logger.info(f"Running baseline tasks with config: {security_config}")
     
@@ -103,7 +106,7 @@ def run_baseline_tasks(security_config: str = "config_a") -> None:
         run_id = collector.start_run(task, security_config)
         
         # Run the pipeline
-        state = run_pipeline(task, security_config)
+        state = run_pipeline(task, security_config, auth_token=auth_token)
         
         # Update state with the run_id from collector
         state["run_id"] = run_id
@@ -187,6 +190,13 @@ Examples:
     )
     
     parser.add_argument(
+        "--token",
+        type=str,
+        default=None,
+        help="Authentication token to present (optional, defaults to AUTH_TOKEN env var)"
+    )
+    
+    parser.add_argument(
         "--summary",
         action="store_true",
         help="Show results summary from CSV"
@@ -208,10 +218,10 @@ Examples:
     if args.summary:
         show_summary()
     elif args.task:
-        run_single_task(args.task, args.config)
+        run_single_task(args.task, args.config, auth_token=args.token)
     else:
         # Default: run baseline tasks
-        run_baseline_tasks(args.config)
+        run_baseline_tasks(args.config, auth_token=args.token)
 
 
 if __name__ == "__main__":

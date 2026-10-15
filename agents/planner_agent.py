@@ -71,6 +71,7 @@ def planner_agent(user_task: str, security_config: str = "config_a") -> Dict[str
         - search_query: str
         - execution_instruction: str
         - expected_output_type: str ("summary" | "answer" | "list")
+        - security_events: Dict[str, Any] (optional, for security event tracking)
         Or error dictionary if blocked by security
     """
     logger.info(f"Planner Agent processing task: {user_task[:50]}...")
@@ -88,7 +89,8 @@ def planner_agent(user_task: str, security_config: str = "config_a") -> Dict[str
                 logger.warning(f"Input blocked by security policy. Keyword detected: {keyword}")
                 return {
                     "error": "Input blocked by security policy",
-                    "reason": f"keyword detected: {keyword}"
+                    "reason": f"keyword detected: {keyword}",
+                    "security_events": {"input_validation_failed": True}
                 }
         
         # Check input length
@@ -97,12 +99,13 @@ def planner_agent(user_task: str, security_config: str = "config_a") -> Dict[str
             logger.warning(f"Input blocked: exceeds max length of {max_length}")
             return {
                 "error": "Input blocked by security policy",
-                "reason": f"input exceeds maximum length of {max_length} characters"
+                "reason": f"input exceeds maximum length of {max_length} characters",
+                "security_events": {"input_validation_failed": True}
             }
     
     # Initialize LLM
     llm = ChatGroq(
-        model="llama-3.1-8b-instant",
+        model="openai/gpt-oss-120b",
         temperature=0.1
     )
     

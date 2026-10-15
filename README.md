@@ -28,7 +28,7 @@ This research project builds a multi-agent AI system using LangGraph + Groq + MC
 - **Python 3.10+**
 - **LangGraph** — multi-agent orchestration as a directed state graph
 - **LangChain + langchain-groq** — LLM integration
-- **Groq API** — LLM inference (model: llama-3.1-8b-instant)
+- **Groq API** — LLM inference (model: openai/gpt-oss-120b)
 - **MCP Python SDK** — Model Context Protocol tool servers
 - **LangSmith** — full tracing and observability of every run
 - **python-dotenv** — environment variable management
@@ -69,6 +69,11 @@ mcp-security-framework/
 │   ├── collector.py              # Auto-logs runs to CSV
 │   └── analyser.py                # Generates summary stats (Phase 4)
 │
+├── security/                      # Security controls module
+│   ├── __init__.py
+│   ├── auth.py                   # Authentication implementation
+│   └── logging_config.py         # Configurable logging levels
+│
 ├── benchmark_dataset/            # Test task datasets
 │   ├── normal_tasks.json          # 20 legitimate test tasks
 │   └── attack_cases.json          # Attack scenarios (Phase 3)
@@ -83,7 +88,15 @@ mcp-security-framework/
 ├── tests/                         # Test suite
 │   ├── test_groq_connection.py    # Groq API connectivity tests
 │   ├── test_mcp_servers.py        # MCP server functionality tests
-│   └── test_happy_path.py         # End-to-end happy path tests
+│   ├── test_mcp_integration.py   # MCP client-server integration tests
+│   ├── test_happy_path.py         # End-to-end happy path tests
+│   └── test_security_controls.py # Security control tests
+│
+├── docs/                          # Documentation
+│   └── configuration_matrix.md    # Security configuration comparison
+│
+├── reports/                       # Evaluation reports
+│   └── security_evaluation_report.md  # Comprehensive security audit report
 │
 ├── data/                          # Data folder for file_read_server
 │
@@ -103,6 +116,8 @@ mcp-security-framework/
 - Python 3.10 or higher
 - Groq API key (free tier available at https://console.groq.com/)
 - LangSmith API key (optional, for tracing)
+- AUTH_SECRET (system secret configured in environment for server-side authentication verification)
+- AUTH_TOKEN (client credential token presented to authenticate pipeline requests in Config B and C)
 
 ### Installation
 
@@ -135,9 +150,25 @@ mcp-security-framework/
    GROQ_API_KEY=your_groq_key_here
    LANGCHAIN_TRACING_V2=true
    LANGCHAIN_API_KEY=your_langsmith_key_here
+   AUTH_SECRET=your_system_secret_here
+   AUTH_TOKEN=your_presented_token_here
    LANGCHAIN_PROJECT=mcp-security-research
    ```
    
+   **Authentication Mechanism:**
+   - **Config A (`no_security.yaml`):** Authentication disabled (no check performed).
+   - **Config B (`basic_security.yaml`) & Config C (`hardened.yaml`):** Authentication enabled.
+   - **Expected Secret:** Configured via `expected_auth_secret: "$AUTH_SECRET"` referencing the `AUTH_SECRET` environment variable.
+   - **Presented Credential:** Provided via CLI (`--token`), function argument (`auth_token` in `run_pipeline()`), or fallback to the `AUTH_TOKEN` environment variable.
+   - **Enforcement Rules:**
+     - Reject requests if authentication is enabled but the expected secret is not configured or empty.
+     - Reject requests with missing or empty credentials.
+     - Reject requests where the presented credential does not match the expected secret (`hmac.compare_digest` constant-time verification).
+     - Reject self-referential configuration (`expected_auth_secret: "$AUTH_TOKEN"`).
+     - Never accept arbitrary non-empty strings.
+   
+   **Note:** Both `AUTH_SECRET` and `AUTH_TOKEN` must be set (and match) for authorized access in Config B and Config C. Config A does not require authentication.
+
    Replace the placeholder values with your actual API keys.
 
 5. **Create data folder**
@@ -166,8 +197,10 @@ python main.py --config config_b
 
 Available configurations:
 - `config_a` — No security (baseline)
-- `config_b` — Basic security (authentication + tool scoping)
+- `config_b` — Basic security (authentication + tool scoping + output validation)
 - `config_c` — Hardened (full security with validation)
+
+**Important:** Config B and Config C require AUTH_TOKEN to be set. Without it, pipeline execution will fail at the authentication check.
 
 ### Show results summary
 ```bash
@@ -190,8 +223,8 @@ Results are automatically logged to `results/raw_results.csv` with the following
 | security_config | Security configuration used |
 | attack_type | Type of attack (Phase 3) |
 | attack_injected | Whether an attack was injected |
-| attack_success | Whether the attack succeeded |
-| breach_occurred | Whether a security breach occurred |
+| attack_success | Whether the attack succeeded (null in Phase 2) |
+| breach_occurred | Whether a security breach occurred (null in Phase 2) |
 | task_completed | Whether the task was completed successfully |
 | quality_score | Quality score (0.0 to 1.0) |
 | latency_ms | Total execution time in milliseconds |
@@ -199,6 +232,10 @@ Results are automatically logged to `results/raw_results.csv` with the following
 | research_success | Whether research agent succeeded |
 | execution_success | Whether execution agent succeeded |
 | tool_called | Which tool was called |
+| auth_success | Whether authentication succeeded |
+| permission_denied | Whether tool permission was denied |
+| input_validation_failed | Whether input validation failed |
+| output_validation_failed | Whether output validation failed |
 | notes | Additional notes or errors |
 
 ### Quality Score Interpretation
@@ -212,27 +249,56 @@ Results are automatically logged to `results/raw_results.csv` with the following
 #### Config A (no_security.yaml)
 - No authentication
 - No tool permission scoping
-- No input/output validation
-- Basic logging
+- No input validation (user task)
+- No output validation
+- Basic logging (INFO level)
 - All tools allowed for all agents
+- Tool parameter validation enabled (basic checks)
 
 #### Config B (basic_security.yaml)
-- Authentication enabled
+- Authentication enabled (credential verified against expected secret `$AUTH_SECRET`)
+- Expected secret: `$AUTH_SECRET` (configured via environment variable)
 - Tool permission scoping enabled
-- No input/output validation
-- Standard logging
-- Restricted tool access per agent
+- No input validation (user task)
+- Output validation enabled (length limit: 5000 chars)
+- Standard logging (INFO level)
+- Restricted tool access per agent (research: read_file, web_search)
+- Tool parameter validation enabled (basic checks)
 
 #### Config C (hardened.yaml)
-- Authentication enabled
+- Authentication enabled (credential verified against expected secret `$AUTH_SECRET`)
+- Expected secret: `$AUTH_SECRET` (configured via environment variable)
 - Tool permission scoping enabled
-- Input validation (keyword blocking, length limits)
-- Output validation (content scanning, length limits)
-- Verbose logging
-- Restricted tool access per agent
-- Max tool calls per run: 3
-- Max input length: 500 characters
-- Blocked keywords: ["ignore previous", "disregard", "override", "forget instructions", "new instruction"]
+- Input validation enabled (keyword blocking + length limit: 500 chars)
+- Output validation enabled (length limit: 2000 chars + content scanning)
+- Verbose logging (DEBUG level)
+- Restricted tool access per agent (research: read_file, web_search)
+- Tool parameter validation enabled (basic checks)
+
+### What Authentication Protects and Its Limitations
+
+#### What It Protects
+1. **Pipeline Entry Gatekeeping:**
+   - Enforced at pipeline invocation (`pipeline/graph.py` before agent graph creation).
+   - If authentication fails, pipeline execution aborts immediately: zero agent nodes run, no LLM inference calls are dispatched, and no tools are invoked.
+2. **Credential Integrity:**
+   - Presented credentials must match the server-side expected secret (`AUTH_SECRET`).
+   - Timing-attack safe comparison (`hmac.compare_digest`).
+   - Rejects empty, missing, mismatched, or self-referential credentials.
+3. **Information Disclosure Prevention:**
+   - Credentials and secrets are never printed in error messages, reports, or application logs.
+
+#### Limitations
+1. **Pre-shared Symmetric Secret:**
+   - Uses a single shared secret token; does not support individual user identities, role-based access tokens, or multi-tenant claims.
+2. **No Token Lifecycle Management:**
+   - No automatic token expiration (TTL), session management, or automatic rotation.
+3. **No Brute-force / Rate Limiting:**
+   - Authentication does not include rate limiting or IP-based lockout mechanisms.
+4. **Transport Layer Dependency:**
+   - Protection assumes the environment and local execution boundaries are trustworthy. Does not replace transport encryption (TLS) in networked setups.
+
+**Note:** See `docs/configuration_matrix.md` for a detailed comparison of all security controls across configurations.
 
 ---
 
@@ -240,7 +306,12 @@ Results are automatically logged to `results/raw_results.csv` with the following
 
 ### Run all tests
 ```bash
-pytest tests/
+python -m pytest tests/ -v
+```
+
+### Run security control tests
+```bash
+python -m pytest tests/test_security_controls.py -v
 ```
 
 ### Run specific test file
