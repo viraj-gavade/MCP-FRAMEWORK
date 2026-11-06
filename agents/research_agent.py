@@ -14,7 +14,7 @@ This is verifiable using MCP Inspector: npx @modelcontextprotocol/inspector
 import asyncio
 import logging
 import sys
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -24,31 +24,25 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def load_security_config(config_name: str) -> Dict[str, Any]:
-    """
-    Load security configuration from YAML file.
-    
-    Args:
-        config_name: Name of the config (e.g., "config_a", "config_b", "config_c")
-    
-    Returns:
-        Dict containing security configuration
-    """
-    import yaml
-    from pathlib import Path
-    
-    config_map = {
-        "config_a": "no_security.yaml",
-        "config_b": "basic_security.yaml",
-        "config_c": "hardened.yaml"
-    }
-    
-    config_file = Path(__file__).parent.parent / "configs" / config_map.get(config_name, "no_security.yaml")
-    
-    with open(config_file, 'r') as f:
-        config = yaml.safe_load(f)
-    
-    return config
+from configs import load_security_config
+
+# Global tracker for MCP tool call counts per run
+_tool_call_counts: Dict[str, int] = {}
+
+
+def reset_tool_call_counter(run_id: Optional[str] = None) -> None:
+    """Reset the tool call counter for a specific run or all runs."""
+    global _tool_call_counts
+    if run_id:
+        _tool_call_counts.pop(run_id, None)
+    else:
+        _tool_call_counts.clear()
+
+
+def get_tool_call_count(run_id: Optional[str] = None) -> int:
+    """Get the current tool call count for a specific run or the default run."""
+    key = run_id or "_default_"
+    return _tool_call_counts.get(key, 0)
 
 
 async def call_mcp_tool(server_script: str, tool_name: str, tool_args: dict) -> str:
@@ -82,13 +76,18 @@ async def call_mcp_tool(server_script: str, tool_name: str, tool_args: dict) -> 
         return f"MCP tool call failed: {str(e)}"
 
 
-def research_agent(plan: Dict[str, Any], security_config: str = "config_a") -> Dict[str, Any]:
+def research_agent(
+    plan: Dict[str, Any],
+    security_config: str = "config_a",
+    run_id: Optional[str] = None
+) -> Dict[str, Any]:
     """
     Retrieve information based on the plan from the Planner Agent.
     
     Args:
         plan: Dictionary from Planner Agent with search_query and other fields
         security_config: Security configuration name (config_a, config_b, config_c)
+        run_id: Optional unique identifier for tracking per-run tool call budgets
     
     Returns:
         Dictionary containing:
@@ -96,12 +95,19 @@ def research_agent(plan: Dict[str, Any], security_config: str = "config_a") -> D
         - tool_called: str ("read_file" | "web_search")
         - raw_result: str
         - retrieval_success: bool
-        Or error dictionary if tool not permitted
+        - security_events: Dict[str, Any] (optional)
+        Or error dictionary if tool not permitted or limit exceeded
     """
     logger.info(f"Research Agent processing plan. Search query: {plan.get('search_query', 'N/A')}")
     
     # Load security configuration
     config = load_security_config(security_config)
+    
+    # Determine run tracking key
+    effective_run_id = run_id or (plan.get("run_id") if isinstance(plan, dict) else None)
+    run_key = effective_run_id or "_default_"
+    
+    sec_events: Dict[str, Any] = {}
     
     # Determine which tool to use
     search_query = plan.get("search_query", "")
@@ -153,10 +159,33 @@ def research_agent(plan: Dict[str, Any], security_config: str = "config_a") -> D
             return {
                 "error": "Tool not permitted",
                 "tool_requested": tool_name,
+                "retrieval_success": False,
                 "security_events": {"permission_denied": True}
             }
+        
+        # Tool call limit enforcement (e.g. max_tool_calls_per_run: 3 in Config C)
+        max_tool_calls = config.get("max_tool_calls_per_run")
+        if max_tool_calls is not None:
+            current_calls = _tool_call_counts.get(run_key, 0)
+            if current_calls >= max_tool_calls:
+                logger.warning(
+                    f"Tool call limit reached for run '{run_key}': call {current_calls + 1} denied (max allowed: {max_tool_calls})"
+                )
+                return {
+                    "error": "Tool call limit exceeded",
+                    "reason": f"Maximum tool calls per run ({max_tool_calls}) exceeded",
+                    "tool_requested": tool_name,
+                    "retrieval_success": False,
+                    "security_events": {"permission_denied": True}
+                }
+        
+        # Tool scoping checked and permitted
+        sec_events["permission_denied"] = False
     
-    # Determine which server to use
+    # Record actual attempted tool invocation in run counter
+    _tool_call_counts[run_key] = _tool_call_counts.get(run_key, 0) + 1
+    
+    # Determine which server to use and invoke tool
     if search_query.startswith("file:"):
         filename = search_query[5:].strip()
         server_script = str(Path(__file__).parent.parent / "mcp_servers" / "file_read_server.py")
@@ -170,17 +199,20 @@ def research_agent(plan: Dict[str, Any], security_config: str = "config_a") -> D
     # Check if tool call failed
     if result.startswith("Error:") or result.startswith("MCP tool call failed"):
         logger.error(f"Tool call failed: {result}")
-        return {
+        err_res = {
             "query_used": search_query,
             "tool_called": tool_called,
             "raw_result": "",
             "retrieval_success": False,
             "error": result
         }
+        if sec_events:
+            err_res["security_events"] = sec_events
+        return err_res
     
     raw_result = result
     
-    # Security check for Config B and C: output validation
+    # Security check for Config B and C: output validation (length truncation)
     output_truncated = False
     if config.get("output_validation", False):
         max_length = config.get("max_output_length", 2000)
@@ -188,6 +220,7 @@ def research_agent(plan: Dict[str, Any], security_config: str = "config_a") -> D
             logger.warning(f"Tool output truncated: exceeds {max_length} characters")
             raw_result = raw_result[:max_length] + f"\n\n[TRUNCATED: Output exceeded {max_length} character limit]"
             output_truncated = True
+        sec_events["output_validation_failed"] = output_truncated
     
     logger.info(f"Research completed successfully using {tool_called}")
     
@@ -198,8 +231,7 @@ def research_agent(plan: Dict[str, Any], security_config: str = "config_a") -> D
         "retrieval_success": True
     }
     
-    # Record output validation event if truncated
-    if output_truncated:
-        result_dict["security_events"] = {"output_validation_failed": True}
+    if sec_events:
+        result_dict["security_events"] = sec_events
     
     return result_dict

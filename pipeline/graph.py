@@ -113,7 +113,7 @@ def research_node(state: AgentState) -> AgentState:
         return state
     
     try:
-        research_result = research_agent(state["plan"], state["security_config"])
+        research_result = research_agent(state["plan"], state["security_config"], run_id=state["run_id"])
         
         # Propagate structured security events from research agent
         if isinstance(research_result, dict) and "security_events" in research_result and isinstance(research_result["security_events"], dict):
@@ -158,7 +158,11 @@ def execution_node(state: AgentState) -> AgentState:
         
         # Propagate structured security events from execution agent
         if isinstance(execution_result, dict) and "security_events" in execution_result and isinstance(execution_result["security_events"], dict):
-            state["security_events"].update(execution_result["security_events"])
+            exec_events = dict(execution_result["security_events"])
+            # If research agent already flagged output_validation_failed as True, preserve True
+            if state["security_events"].get("output_validation_failed") is True:
+                exec_events["output_validation_failed"] = True
+            state["security_events"].update(exec_events)
         
         if "error" in execution_result:
             logger.error(f"[{state['run_id']}] Execution failed: {execution_result['error']}")
@@ -263,38 +267,43 @@ def run_pipeline(
     
     logger.info(f"[{run_id}] Starting pipeline for task: {user_task[:50]}...")
     
-    # Load security configuration for authentication check
+    # Load security configuration for authentication check (raises ValueError on invalid name)
     config = load_security_config(security_config)
     
     # Configure logging based on security configuration
     configure_logging(config)
     
     # Check authentication if enabled
-    authenticated, auth_error = check_authentication(config, auth_token=auth_token)
-    if not authenticated:
-        elapsed_ms = max(0, int(round((time.perf_counter() - start_time) * 1000)))
-        logger.error(f"[{run_id}] Authentication failed: {auth_error}")
-        # Return error state without running pipeline
-        return {
-            "user_task": user_task,
-            "security_config": security_config,
-            "plan": {"error": f"Authentication failed: {auth_error}"},
-            "research_result": None,
-            "execution_result": None,
-            "evaluation_result": None,
-            "run_id": run_id,
-            "errors": [f"Authentication failed: {auth_error}"],
-            "attack_injected": False,
-            "security_events": {
-                "auth_success": False,
-                "permission_denied": False,
-                "input_validation_failed": False,
-                "output_validation_failed": False
-            },
-            "latency_ms": elapsed_ms
-        }
+    auth_enabled = config.get("authentication", False)
+    if auth_enabled:
+        authenticated, auth_error = check_authentication(config, auth_token=auth_token)
+        if not authenticated:
+            elapsed_ms = max(0, int(round((time.perf_counter() - start_time) * 1000)))
+            logger.error(f"[{run_id}] Authentication failed: {auth_error}")
+            # Return error state without running pipeline
+            return {
+                "user_task": user_task,
+                "security_config": security_config,
+                "plan": {"error": f"Authentication failed: {auth_error}"},
+                "research_result": None,
+                "execution_result": None,
+                "evaluation_result": None,
+                "run_id": run_id,
+                "errors": [f"Authentication failed: {auth_error}"],
+                "attack_injected": False,
+                "security_events": {
+                    "auth_success": False,
+                    "permission_denied": None,
+                    "input_validation_failed": None,
+                    "output_validation_failed": None
+                },
+                "latency_ms": elapsed_ms
+            }
+        auth_status = True
+    else:
+        auth_status = None
     
-    # Initialize state with security events tracking
+    # Initialize state with security events tracking (tri-state: True, False, or None if unmeasured/not reached)
     initial_state: AgentState = {
         "user_task": user_task,
         "security_config": security_config,
@@ -306,10 +315,10 @@ def run_pipeline(
         "errors": [],
         "attack_injected": False,  # Phase 2: always False
         "security_events": {
-            "auth_success": True,  # Auth passed if we reach here
-            "permission_denied": False,
-            "input_validation_failed": False,
-            "output_validation_failed": False
+            "auth_success": auth_status,
+            "permission_denied": None,
+            "input_validation_failed": None,
+            "output_validation_failed": None
         },
         "latency_ms": 0
     }

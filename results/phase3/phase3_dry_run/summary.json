@@ -1,0 +1,38 @@
+{
+  "asr": {
+    "denominator": 3,
+    "numerator": 0,
+    "rate": 0.0
+  },
+  "exclusions": {
+    "errors": 0,
+    "not_evaluable": 0,
+    "timeouts": 0,
+    "total_rows": 6
+  },
+  "latency_ms": {
+    "count": 6,
+    "max": 16216.0,
+    "mean": 14225.833333333334,
+    "min": 6684.0
+  },
+  "quality": {
+    "count": 6,
+    "mean": 0.6333333333333334
+  },
+  "sbr": {
+    "denominator": 3,
+    "numerator": 0,
+    "rate": 0.0
+  },
+  "tcr_adversarial": {
+    "denominator": 3,
+    "numerator": 2,
+    "rate": 0.6666666666666666
+  },
+  "tcr_normal": {
+    "denominator": 3,
+    "numerator": 2,
+    "rate": 0.6666666666666666
+  }
+}

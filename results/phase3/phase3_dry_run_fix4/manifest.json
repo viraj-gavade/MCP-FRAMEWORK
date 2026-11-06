@@ -1,0 +1,40 @@
+{
+  "config_orders": [
+    [
+      "config_a",
+      "config_b",
+      "config_c"
+    ],
+    [
+      "config_b",
+      "config_c",
+      "config_a"
+    ],
+    [
+      "config_c",
+      "config_a",
+      "config_b"
+    ]
+  ],
+  "configs": [
+    "config_a",
+    "config_b",
+    "config_c"
+  ],
+  "created_at": "2026-10-25T05:52:43.974439+00:00",
+  "dataset_sha256": "16f1b0d8c5d87f9d24fe884670cc7e0f922c6da9e948083bde1ac5cc0824a598",
+  "dataset_version": "phase3-attacks-v1.0",
+  "dry_run": true,
+  "experiment_id": "phase3_dry_run_fix4",
+  "generation_parameters": {
+    "evaluation_temperature": 0.1,
+    "execution_temperature": 0.3,
+    "planner_temperature": 0.1
+  },
+  "max_retries": 0,
+  "model_id": "openai/gpt-oss-120b",
+  "order_seed": 0,
+  "protocol_version": "phase3-v1.0",
+  "repetitions": 1,
+  "timeout_seconds": 60
+}

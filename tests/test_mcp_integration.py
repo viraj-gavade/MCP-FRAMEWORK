@@ -23,99 +23,105 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 
-async def test_file_read_server_mcp_connection():
+def test_file_read_server_mcp_connection():
     """
     Test that the file-read MCP server can be started and connected to via stdio.
     """
-    server_script = str(project_root / "mcp_servers" / "file_read_server.py")
-    
-    server_params = StdioServerParameters(
-        command=sys.executable,
-        args=[server_script],
-        env=None
-    )
-    
-    try:
-        async with stdio_client(server_params) as (read, write):
-            async with ClientSession(read, write) as session:
-                # Initialize MCP session
-                await session.initialize()
-                
-                # List available tools
-                tools = await session.list_tools()
-                
-                print(f"✓ File-read server connected successfully")
-                print(f"  Available tools: {[tool.name for tool in tools.tools]}")
-                
-                # Verify read_file tool is available
-                tool_names = [tool.name for tool in tools.tools]
-                assert "read_file" in tool_names, "read_file tool not found"
-                
-                print(f"✓ read_file tool is available")
-                
-                # Call the tool
-                result = await session.call_tool("read_file", {"filename": "mcp_overview.txt"})
-                
-                assert result.content is not None, "Tool result content is None"
-                assert len(result.content) > 0, "Tool result content is empty"
-                
-                result_text = result.content[0].text
-                print(f"✓ Tool call succeeded, result length: {len(result_text)} chars")
-                
-                # Verify result is not an error
-                assert not result_text.startswith("Error:"), f"Tool returned error: {result_text}"
-                
-    except Exception as e:
-        print(f"✗ MCP connection test failed: {e}")
-        raise
+    async def _run():
+        server_script = str(project_root / "mcp_servers" / "file_read_server.py")
+        
+        server_params = StdioServerParameters(
+            command=sys.executable,
+            args=[server_script],
+            env=None
+        )
+        
+        try:
+            async with stdio_client(server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    # Initialize MCP session
+                    await session.initialize()
+                    
+                    # List available tools
+                    tools = await session.list_tools()
+                    
+                    print(f"[PASS] File-read server connected successfully")
+                    print(f"  Available tools: {[tool.name for tool in tools.tools]}")
+                    
+                    # Verify read_file tool is available
+                    tool_names = [tool.name for tool in tools.tools]
+                    assert "read_file" in tool_names, "read_file tool not found"
+                    
+                    print(f"[PASS] read_file tool is available")
+                    
+                    # Call the tool
+                    result = await session.call_tool("read_file", {"filename": "mcp_overview.txt"})
+                    
+                    assert result.content is not None, "Tool result content is None"
+                    assert len(result.content) > 0, "Tool result content is empty"
+                    
+                    result_text = result.content[0].text
+                    print(f"[PASS] Tool call succeeded, result length: {len(result_text)} chars")
+                    
+                    # Verify result is not an error
+                    assert not result_text.startswith("Error:"), f"Tool returned error: {result_text}"
+                    
+        except Exception as e:
+            print(f"[FAIL] MCP connection test failed: {e}")
+            raise
+
+    asyncio.run(_run())
 
 
-async def test_web_search_server_mcp_connection():
+def test_web_search_server_mcp_connection():
     """
     Test that the web-search MCP server can be started and connected to via stdio.
     """
-    server_script = str(project_root / "mcp_servers" / "web_search_server.py")
-    
-    server_params = StdioServerParameters(
-        command=sys.executable,
-        args=[server_script],
-        env=None
-    )
-    
-    try:
-        async with stdio_client(server_params) as (read, write):
-            async with ClientSession(read, write) as session:
-                # Initialize MCP session
-                await session.initialize()
-                
-                # List available tools
-                tools = await session.list_tools()
-                
-                print(f"✓ Web-search server connected successfully")
-                print(f"  Available tools: {[tool.name for tool in tools.tools]}")
-                
-                # Verify web_search tool is available
-                tool_names = [tool.name for tool in tools.tools]
-                assert "web_search" in tool_names, "web_search tool not found"
-                
-                print(f"✓ web_search tool is available")
-                
-                # Call the tool
-                result = await session.call_tool("web_search", {"query": "prompt injection"})
-                
-                assert result.content is not None, "Tool result content is None"
-                assert len(result.content) > 0, "Tool result content is empty"
-                
-                result_text = result.content[0].text
-                print(f"✓ Tool call succeeded, result length: {len(result_text)} chars")
-                
-                # Verify result is not an error
-                assert not result_text.startswith("Error:"), f"Tool returned error: {result_text}"
-                assert "prompt injection" in result_text.lower(), "Result doesn't contain expected content"
-                
-    except Exception as e:
-        print(f"✗ MCP connection test failed: {e}")
-        raise
+    async def _run():
+        server_script = str(project_root / "mcp_servers" / "web_search_server.py")
+        
+        server_params = StdioServerParameters(
+            command=sys.executable,
+            args=[server_script],
+            env=None
+        )
+        
+        try:
+            async with stdio_client(server_params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    # Initialize MCP session
+                    await session.initialize()
+                    
+                    # List available tools
+                    tools = await session.list_tools()
+                    
+                    print(f"[PASS] Web-search server connected successfully")
+                    print(f"  Available tools: {[tool.name for tool in tools.tools]}")
+                    
+                    # Verify web_search tool is available
+                    tool_names = [tool.name for tool in tools.tools]
+                    assert "web_search" in tool_names, "web_search tool not found"
+                    
+                    print(f"[PASS] web_search tool is available")
+                    
+                    # Call the tool
+                    result = await session.call_tool("web_search", {"query": "prompt injection"})
+                    
+                    assert result.content is not None, "Tool result content is None"
+                    assert len(result.content) > 0, "Tool result content is empty"
+                    
+                    result_text = result.content[0].text
+                    print(f"[PASS] Tool call succeeded, result length: {len(result_text)} chars")
+                    
+                    # Verify result is not an error
+                    assert not result_text.startswith("Error:"), f"Tool returned error: {result_text}"
+                    assert "prompt injection" in result_text.lower(), "Result doesn't contain expected content"
+                    
+        except Exception as e:
+            print(f"[FAIL] MCP connection test failed: {e}")
+            raise
+
+    asyncio.run(_run())
 
 
 def test_research_agent_uses_mcp():
@@ -147,9 +153,9 @@ def test_research_agent_uses_mcp():
     assert "import web_search_server" not in source, \
         "research_agent directly imports web_search_server (not using MCP)"
     
-    print("✓ research_agent uses MCP SDK (ClientSession, StdioServerParameters, stdio_client)")
-    print("✓ research_agent does NOT directly import server modules")
-    print("✓ research_agent implements call_mcp_tool() for MCP communication")
+    print("[PASS] research_agent uses MCP SDK (ClientSession, StdioServerParameters, stdio_client)")
+    print("[PASS] research_agent does NOT directly import server modules")
+    print("[PASS] research_agent implements call_mcp_tool() for MCP communication")
 
 
 if __name__ == "__main__":
@@ -163,10 +169,10 @@ if __name__ == "__main__":
     test_research_agent_uses_mcp()
     
     print("\n[Test 2] Testing file-read server MCP connection...")
-    asyncio.run(test_file_read_server_mcp_connection())
+    test_file_read_server_mcp_connection()
     
     print("\n[Test 3] Testing web-search server MCP connection...")
-    asyncio.run(test_web_search_server_mcp_connection())
+    test_web_search_server_mcp_connection()
     
     print("\n" + "=" * 70)
     print("All MCP integration tests passed!")

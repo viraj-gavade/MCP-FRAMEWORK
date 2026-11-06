@@ -194,31 +194,22 @@ class MetricsCollector:
         # Get tool called
         tool_called = research_result.get("tool_called", "none") if research_result else "none"
         
-        # Determine security event flags directly from structured representations
+        # Determine security event flags directly from structured representations (tri-state: True, False, or None)
         auth_success = sec_events.get("auth_success")
-        if auth_success is None:
-            # Fallback for legacy state
-            auth_success = "Authentication failed" not in str(plan.get("error", ""))
-        
         permission_denied = sec_events.get("permission_denied")
-        if permission_denied is None:
-            if research_result and "security_events" in research_result:
-                permission_denied = research_result["security_events"].get("permission_denied", False)
-            else:
-                permission_denied = "Tool not permitted" in str(research_result.get("error", "")) if research_result else False
-        
         input_validation_failed = sec_events.get("input_validation_failed")
-        if input_validation_failed is None:
-            if plan and "security_events" in plan:
-                input_validation_failed = plan["security_events"].get("input_validation_failed", False)
-            else:
-                input_validation_failed = "Input blocked" in str(plan.get("error", "")) if plan else False
-        
         output_validation_failed = sec_events.get("output_validation_failed")
-        if output_validation_failed is None:
-            res_ov = research_result.get("security_events", {}).get("output_validation_failed", False) if research_result else False
-            exec_ov = execution_result.get("security_events", {}).get("output_validation_failed", False) if execution_result else False
-            output_validation_failed = res_ov or exec_ov
+        
+        # Legacy fallback ONLY if security_events dictionary was not present at all
+        if not sec_events and state_dict:
+            if "Authentication failed" in str(plan.get("error", "")):
+                auth_success = False
+            if "Tool not permitted" in str(research_result.get("error", "")):
+                permission_denied = True
+            if "Input blocked" in str(plan.get("error", "")) or "Input blocked" in str(state_dict.get("errors", [])):
+                input_validation_failed = True
+            if "TRUNCATED" in str(research_result.get("raw_result", "")) or "OUTPUT BLOCKED" in str(execution_result.get("result", "")):
+                output_validation_failed = True
         
         # Attack outcomes: unmeasured in Phase 2 baseline
         attack_type = state_dict.get("attack_type", "none")
@@ -230,7 +221,7 @@ class MetricsCollector:
         task_completed = evaluation_result.get("task_completed", False)
         quality_score = evaluation_result.get("quality_score", 0.0)
         
-        # Build row data matching HEADERS
+        # Build row data matching HEADERS (serialize None as empty string "")
         row = [
             run_id,
             datetime.now().isoformat(),
@@ -247,10 +238,10 @@ class MetricsCollector:
             str(research_success),
             str(execution_success),
             str(tool_called),
-            str(auth_success),
-            str(permission_denied),
-            str(input_validation_failed),
-            str(output_validation_failed),
+            str(auth_success) if auth_success is not None else "",
+            str(permission_denied) if permission_denied is not None else "",
+            str(input_validation_failed) if input_validation_failed is not None else "",
+            str(output_validation_failed) if output_validation_failed is not None else "",
             "; ".join(str(e) for e in state_dict.get("errors", []))[:200]
         ]
         

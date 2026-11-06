@@ -1,0 +1,42 @@
+%% Architecture source derived from pipeline/graph.py and the implemented agents.
+%% Security controls are shown only at their verified enforcement locations.
+flowchart LR
+    U[User task / CLI input] --> P0[run_pipeline]
+    C[Config selection<br/>config_a / config_b / config_c] --> L[load_security_config]
+    L --> A{Authentication gate<br/>Config B/C only}
+    P0 --> A
+    A -->|accepted or Config A| G[LangGraph compiled state graph]
+    A -->|rejected| R0[Return error state<br/>no agent execution]
+
+    subgraph LG[LangGraph execution sequence]
+        direction LR
+        P[Planner Agent<br/>ChatGroq plan generation] --> R[Research Agent]
+        R --> E[Execution Agent<br/>ChatGroq synthesis]
+        E --> V[Evaluation Agent<br/>ChatGroq quality score]
+    end
+    G --> P
+    V --> O[Output / final state returned to caller]
+
+    IV[Config C input validation<br/>keyword + length] -.-> P
+    SC[Config B/C tool permission scoping<br/>before MCP invocation] -.-> R
+    TB[Config C max 3 MCP calls per run<br/>deny fourth attempt] -.-> R
+    OL[Config B/C output length validation<br/>after MCP response] -.-> R
+    OS[Config C configured content scan] -.-> E
+
+    R -->|tool request| MC[MCP client<br/>MCP Python SDK<br/>stdio transport]
+    MC -->|read_file request| FS[File-read MCP server<br/>read_file]
+    FS -->|tool response| MC
+    MC -->|web_search request| WS[Mock web-search MCP server<br/>web_search]
+    WS -->|tool response| MC
+    MC -->|selected result| R
+    FS --> D[(data/ files)]
+    WS --> MR[(predefined mock results)]
+
+    O --> M[MetricsCollector]
+    M --> CSV[(results/raw_results.csv<br/>20-column metrics log)]
+    P0 -.-> LC[Configurable logging<br/>INFO / DEBUG]
+    G -.-> LC
+    P -.-> LC
+    R -.-> LC
+    E -.-> LC
+    V -.-> LC

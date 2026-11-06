@@ -16,6 +16,7 @@
 | **Allowed Tools (Planner)** | * (all) | none | none |
 | **Allowed Tools (Execution)** | * (all) | none | none |
 | **Allowed Tools (Evaluation)** | * (all) | none | none |
+| **Max Tool Calls per Run** | N/A (unlimited) | N/A (unlimited) | 3 calls |
 | **Max Input Length** | N/A | N/A | 500 characters |
 | **Blocked Keywords** | N/A | N/A | ignore previous, disregard, override, forget instructions, new instruction |
 | **Max Output Length** | N/A | 5000 characters | 2000 characters |
@@ -74,15 +75,15 @@
 - Location: agents/research_agent.py
 
 **Config C:** Enabled
-- YAML: `tool_permission_scoping: true`
-- Enforcement: Enforced before MCP invocation (agents/research_agent.py lines 148-156)
-- Implementation: Same as Config B
-- Tests: Same as Config B
+- YAML: `tool_permission_scoping: true`, `max_tool_calls_per_run: 3`
+- Enforcement: Enforced before MCP invocation (agents/research_agent.py)
+- Implementation: Checks tool name against `allowed_tools.research` list AND enforces run-level invocation limit (max 3 calls). Denies 4th call before MCP invocation with structured security event `permission_denied: True`.
+- Tests: Allowed tools succeed, unpermitted tools rejected before invocation, 4th call denied.
 - Location: agents/research_agent.py
 
 **Limitations:**
 - Only applies to Research Agent (only agent that invokes MCP tools)
-- Config B and Config C have identical tool permissions
+- Config B and Config C share the same allowed tool names (`read_file`, `web_search`), but Config C enforces a 3-call limit per run
 - No wildcard expansion beyond "*"
 - Permission check is case-sensitive
 
@@ -201,13 +202,14 @@
 
 **Config B vs Config C:**
 - Authentication: Both Enabled ✗
-- Tool Permission Scoping: Both Enabled ✗
+- Tool Permission Names: Both Enabled (same tool names) ✗
+- Tool Call Limit: Unlimited vs Max 3 calls per run ✓
 - Input Validation: Disabled vs Enabled ✓
-- Output Validation: Both Enabled (different limits) ✓
+- Output Validation: Both Enabled (5000 length-only vs 2000 length + content scan) ✓
 - Logging: Standard vs Verbose ✓
 
 **Summary:**
 - Config A is clearly distinguishable from Config B and C
-- Config B and C are distinguishable by input validation and output validation limits
+- Config B and C are distinguishable by tool call limits (unlimited vs max 3), input validation (disabled vs enabled), and output validation (length-only 5000 vs length 2000 + content scan)
 - Authentication is identical between Config B and C (both enabled)
-- Tool permissions are identical between Config B and C
+- Tool permission names are identical between Config B and C, but invocation budget is bounded in Config C
