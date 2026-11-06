@@ -8,6 +8,7 @@ every pipeline run to results/raw_results.csv with structured metrics.
 
 import csv
 import logging
+import random
 import time
 from datetime import datetime
 from pathlib import Path
@@ -24,12 +25,35 @@ class MetricsCollector:
     Collects and logs metrics from pipeline runs to CSV.
     
     This class handles:
-    - Creating the CSV file with headers if it doesn't exist
-    - Appending one row per pipeline run
-    - Generating unique run IDs
-    - Calculating latency metrics
-    - Handling file write errors gracefully
+    - Creating the CSV file with standardized 20-column headers
+    - Preserving and migrating legacy CSV files without fabricating data
+    - High-resolution elapsed-time measurement using time.perf_counter()
+    - Logging structured security events directly from execution points
+    - Preserving unmeasured attack and breach metrics until Phase 3
     """
+    
+    HEADERS = [
+        "run_id",
+        "timestamp",
+        "user_task",
+        "security_config",
+        "attack_type",
+        "attack_injected",
+        "attack_success",
+        "breach_occurred",
+        "task_completed",
+        "quality_score",
+        "latency_ms",
+        "planner_success",
+        "research_success",
+        "execution_success",
+        "tool_called",
+        "auth_success",
+        "permission_denied",
+        "input_validation_failed",
+        "output_validation_failed",
+        "notes"
+    ]
     
     def __init__(self, csv_path: Optional[str] = None):
         """
@@ -44,46 +68,74 @@ class MetricsCollector:
         self.csv_path = Path(csv_path)
         self._ensure_csv_exists()
         
-        # Dictionary to track start times for runs
+        # Dictionary to track start times using high-resolution monotonic clock
         self._run_start_times: Dict[str, float] = {}
     
     def _ensure_csv_exists(self) -> None:
         """
-        Create the CSV file with headers if it doesn't exist.
+        Create the CSV file with headers if it doesn't exist,
+        or migrate legacy headers while preserving all historical observations.
         """
         if not self.csv_path.exists():
             self.csv_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            headers = [
-                "run_id",
-                "timestamp",
-                "user_task",
-                "security_config",
-                "attack_type",
-                "attack_injected",
-                "attack_success",
-                "breach_occurred",
-                "task_completed",
-                "quality_score",
-                "latency_ms",
-                "planner_success",
-                "research_success",
-                "execution_success",
-                "tool_called",
-                "auth_success",
-                "permission_denied",
-                "input_validation_failed",
-                "output_validation_failed",
-                "notes"
-            ]
+            try:
+                with open(self.csv_path, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(self.HEADERS)
+                logger.info(f"Created metrics CSV at: {self.csv_path}")
+            except Exception as e:
+                logger.error(f"Failed to create CSV file: {e}")
+            return
+        
+        # Read existing file to inspect header and schema
+        try:
+            with open(self.csv_path, 'r', newline='', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                rows = list(reader)
+        except Exception as e:
+            logger.error(f"Failed to read existing CSV file: {e}")
+            return
+        
+        if not rows:
+            # File is empty, write standardized header
+            try:
+                with open(self.csv_path, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(self.HEADERS)
+            except Exception as e:
+                logger.error(f"Failed to initialize header in empty CSV file: {e}")
+            return
+        
+        existing_header = rows[0]
+        # Check if header needs migration (e.g. legacy 16 columns)
+        if existing_header != self.HEADERS:
+            logger.info(f"Migrating CSV header at {self.csv_path} to standardized 20-column schema")
+            migrated_rows = []
+            for row in rows[1:]:
+                if not row or not any(field.strip() for field in row):
+                    continue
+                if len(row) == 16:
+                    # Legacy 16 columns: 15 metrics + notes. Pad 4 security columns before notes.
+                    migrated_row = row[:15] + ["", "", "", ""] + [row[15]]
+                elif len(row) == len(self.HEADERS):
+                    # Already 20 columns
+                    migrated_row = row
+                elif len(row) < len(self.HEADERS):
+                    # Pad missing columns with empty string
+                    migrated_row = row + [""] * (len(self.HEADERS) - len(row))
+                else:
+                    # Truncate surplus columns
+                    migrated_row = row[:len(self.HEADERS)]
+                migrated_rows.append(migrated_row)
             
             try:
                 with open(self.csv_path, 'w', newline='', encoding='utf-8') as f:
                     writer = csv.writer(f)
-                    writer.writerow(headers)
-                logger.info(f"Created metrics CSV at: {self.csv_path}")
+                    writer.writerow(self.HEADERS)
+                    writer.writerows(migrated_rows)
+                logger.info(f"Successfully migrated {len(migrated_rows)} historical rows to 20-column schema")
             except Exception as e:
-                logger.error(f"Failed to create CSV file: {e}")
+                logger.error(f"Failed to write migrated CSV file: {e}")
     
     def start_run(self, user_task: str, security_config: str) -> str:
         """
@@ -96,81 +148,110 @@ class MetricsCollector:
         Returns:
             Unique run ID for this run
         """
-        # Generate run ID: RUN_YYYYMMDD_HHMMSS_XXXX
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        import random
         random_suffix = f"{random.randint(1000, 9999)}"
         run_id = f"RUN_{timestamp}_{random_suffix}"
         
-        # Record start time
-        self._run_start_times[run_id] = time.time()
+        # Record start time using high-resolution monotonic clock
+        self._run_start_times[run_id] = time.perf_counter()
         
         logger.info(f"Started tracking run: {run_id}")
         return run_id
     
-    def end_run(self, run_id: str, state: AgentState) -> int:
+    def end_run(self, run_id: str, state: Optional[AgentState] = None) -> int:
         """
         Log a completed pipeline run to the CSV.
         
         Args:
-            run_id: Unique run ID from start_run()
+            run_id: Unique run ID from start_run() or pipeline state
             state: Final state from the pipeline
         
         Returns:
             Latency in milliseconds
         """
-        # Calculate latency
-        start_time = self._run_start_times.get(run_id, time.time())
-        latency_ms = int((time.time() - start_time) * 1000)
+        # Calculate latency using high-resolution monotonic clock
+        if run_id in self._run_start_times:
+            start_time = self._run_start_times[run_id]
+            latency_ms = max(0, int(round((time.perf_counter() - start_time) * 1000)))
+        elif state and state.get("latency_ms") is not None:
+            latency_ms = max(0, int(state["latency_ms"]))
+        else:
+            latency_ms = 0
         
-        # Extract metrics from state
-        evaluation_result = state.get("evaluation_result", {})
-        plan = state.get("plan", {})
-        research_result = state.get("research_result", {})
-        execution_result = state.get("execution_result", {})
+        # Extract metrics safely from state
+        state_dict: Dict[str, Any] = state or {}
+        evaluation_result = state_dict.get("evaluation_result") or {}
+        plan = state_dict.get("plan") or {}
+        research_result = state_dict.get("research_result") or {}
+        execution_result = state_dict.get("execution_result") or {}
+        sec_events = state_dict.get("security_events") or {}
         
         # Determine success flags
-        planner_success = "error" not in plan
-        research_success = research_result.get("retrieval_success", False) if research_result else False
-        execution_success = execution_result.get("execution_success", False) if execution_result else False
+        planner_success = bool(plan and "error" not in plan)
+        research_success = bool(research_result and research_result.get("retrieval_success", False))
+        execution_success = bool(execution_result and execution_result.get("execution_success", False))
         
         # Get tool called
         tool_called = research_result.get("tool_called", "none") if research_result else "none"
         
-        # Determine security event flags
-        auth_success = "Authentication failed" not in str(plan.get("error", ""))
-        permission_denied = "Tool not permitted" in str(research_result.get("error", "")) if research_result else False
-        input_validation_failed = "Input blocked" in str(plan.get("error", "")) if plan else False
-        output_validation_failed = "TRUNCATED" in str(research_result.get("raw_result", "")) if research_result else False
+        # Determine security event flags directly from structured representations
+        auth_success = sec_events.get("auth_success")
+        if auth_success is None:
+            # Fallback for legacy state
+            auth_success = "Authentication failed" not in str(plan.get("error", ""))
         
-        # Phase 2: no attacks (these will be set in Phase 3)
-        attack_type = "none"
-        attack_injected = False
-        attack_success = None  # Use None to indicate not measured
-        breach_occurred = None  # Use None to indicate not measured
+        permission_denied = sec_events.get("permission_denied")
+        if permission_denied is None:
+            if research_result and "security_events" in research_result:
+                permission_denied = research_result["security_events"].get("permission_denied", False)
+            else:
+                permission_denied = "Tool not permitted" in str(research_result.get("error", "")) if research_result else False
         
-        # Build row data
+        input_validation_failed = sec_events.get("input_validation_failed")
+        if input_validation_failed is None:
+            if plan and "security_events" in plan:
+                input_validation_failed = plan["security_events"].get("input_validation_failed", False)
+            else:
+                input_validation_failed = "Input blocked" in str(plan.get("error", "")) if plan else False
+        
+        output_validation_failed = sec_events.get("output_validation_failed")
+        if output_validation_failed is None:
+            res_ov = research_result.get("security_events", {}).get("output_validation_failed", False) if research_result else False
+            exec_ov = execution_result.get("security_events", {}).get("output_validation_failed", False) if execution_result else False
+            output_validation_failed = res_ov or exec_ov
+        
+        # Attack outcomes: unmeasured in Phase 2 baseline
+        attack_type = state_dict.get("attack_type", "none")
+        attack_injected = state_dict.get("attack_injected", False)
+        attack_success = state_dict.get("attack_success", None)
+        breach_occurred = state_dict.get("breach_occurred", None)
+        
+        # Task completion and quality score
+        task_completed = evaluation_result.get("task_completed", False)
+        quality_score = evaluation_result.get("quality_score", 0.0)
+        
+        # Build row data matching HEADERS
         row = [
             run_id,
             datetime.now().isoformat(),
-            state.get("user_task", "")[:100],  # Truncate long tasks
-            state.get("security_config", "config_a"),
-            attack_type,
+            str(state_dict.get("user_task", ""))[:100],
+            str(state_dict.get("security_config", "config_a")),
+            str(attack_type),
             str(attack_injected),
             str(attack_success) if attack_success is not None else "",
             str(breach_occurred) if breach_occurred is not None else "",
-            str(evaluation_result.get("task_completed", False)),
-            str(evaluation_result.get("quality_score", 0.0)),
+            str(task_completed),
+            str(quality_score),
             str(latency_ms),
             str(planner_success),
             str(research_success),
             str(execution_success),
-            tool_called,
+            str(tool_called),
             str(auth_success),
             str(permission_denied),
             str(input_validation_failed),
             str(output_validation_failed),
-            "; ".join(state.get("errors", []))[:200]  # Truncate error notes
+            "; ".join(str(e) for e in state_dict.get("errors", []))[:200]
         ]
         
         # Write to CSV
@@ -199,7 +280,7 @@ class MetricsCollector:
             return {"error": "CSV file does not exist"}
         
         try:
-            with open(self.csv_path, 'r', encoding='utf-8') as f:
+            with open(self.csv_path, 'r', newline='', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
                 rows = list(reader)
             
@@ -208,21 +289,48 @@ class MetricsCollector:
             
             total_runs = len(rows)
             
-            # Calculate averages
-            quality_scores = [float(row.get("quality_score", 0)) for row in rows if row.get("quality_score")]
-            latencies = [int(row.get("latency_ms", 0)) for row in rows if row.get("latency_ms")]
+            quality_scores = []
+            latencies = []
+            completed = 0
+            by_config: Dict[str, int] = {}
+            
+            for row in rows:
+                # Quality score
+                qs = row.get("quality_score")
+                if qs not in (None, ""):
+                    try:
+                        quality_scores.append(float(qs))
+                    except ValueError:
+                        pass
+                
+                # Latency
+                lat = row.get("latency_ms")
+                if lat not in (None, ""):
+                    try:
+                        latencies.append(int(round(float(lat))))
+                    except ValueError:
+                        pass
+                
+                # Task completion
+                tc = str(row.get("task_completed", "")).strip().lower()
+                if tc == "true":
+                    completed += 1
+                
+                # Configuration count
+                config = row.get("security_config", "unknown") or "unknown"
+                by_config[config] = by_config.get(config, 0) + 1
             
             avg_quality = sum(quality_scores) / len(quality_scores) if quality_scores else 0.0
-            avg_latency = sum(latencies) / len(latencies) if latencies else 0
+            avg_latency = sum(latencies) / len(latencies) if latencies else 0.0
             
-            # Count completions
-            completed = sum(1 for row in rows if row.get("task_completed") == "True")
+            # Security events summary
+            auth_success_count = sum(1 for r in rows if str(r.get("auth_success", "")).strip().lower() == "true")
+            permission_denied_count = sum(1 for r in rows if str(r.get("permission_denied", "")).strip().lower() == "true")
+            input_val_failed_count = sum(1 for r in rows if str(r.get("input_validation_failed", "")).strip().lower() == "true")
+            output_val_failed_count = sum(1 for r in rows if str(r.get("output_validation_failed", "")).strip().lower() == "true")
             
-            # Count by security config
-            by_config = {}
-            for row in rows:
-                config = row.get("security_config", "unknown")
-                by_config[config] = by_config.get(config, 0) + 1
+            # Attack outcomes
+            attack_injected_count = sum(1 for r in rows if str(r.get("attack_injected", "")).strip().lower() == "true")
             
             return {
                 "total_runs": total_runs,
@@ -230,7 +338,18 @@ class MetricsCollector:
                 "avg_latency_ms": round(avg_latency, 2),
                 "completed_runs": completed,
                 "completion_rate": round(completed / total_runs, 3) if total_runs > 0 else 0.0,
-                "by_security_config": by_config
+                "by_security_config": by_config,
+                "security_events": {
+                    "auth_success_count": auth_success_count,
+                    "permission_denied_count": permission_denied_count,
+                    "input_validation_failed_count": input_val_failed_count,
+                    "output_validation_failed_count": output_val_failed_count
+                },
+                "attack_metrics": {
+                    "attacks_injected_count": attack_injected_count,
+                    "attack_success_rate": None if attack_injected_count == 0 else "measured_in_phase_3",
+                    "status": "Phase 2 baseline - attacks not injected" if attack_injected_count == 0 else "Phase 3 active"
+                }
             }
         
         except Exception as e:

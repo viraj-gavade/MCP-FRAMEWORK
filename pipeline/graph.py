@@ -55,6 +55,7 @@ class AgentState(TypedDict):
     errors: list[str]
     attack_injected: bool
     security_events: Dict[str, Any]
+    latency_ms: Optional[int]
 
 
 def planner_node(state: AgentState) -> AgentState:
@@ -71,6 +72,10 @@ def planner_node(state: AgentState) -> AgentState:
     
     try:
         plan = planner_agent(state["user_task"], state["security_config"])
+        
+        # Propagate structured security events from planner agent
+        if isinstance(plan, dict) and "security_events" in plan and isinstance(plan["security_events"], dict):
+            state["security_events"].update(plan["security_events"])
         
         if "error" in plan:
             logger.error(f"[{state['run_id']}] Planner failed: {plan['error']}")
@@ -110,6 +115,10 @@ def research_node(state: AgentState) -> AgentState:
     try:
         research_result = research_agent(state["plan"], state["security_config"])
         
+        # Propagate structured security events from research agent
+        if isinstance(research_result, dict) and "security_events" in research_result and isinstance(research_result["security_events"], dict):
+            state["security_events"].update(research_result["security_events"])
+        
         if "error" in research_result:
             logger.error(f"[{state['run_id']}] Research failed: {research_result['error']}")
             state["errors"].append(f"Research: {research_result['error']}")
@@ -146,6 +155,10 @@ def execution_node(state: AgentState) -> AgentState:
     
     try:
         execution_result = execution_agent(state["plan"], state["research_result"], state["security_config"])
+        
+        # Propagate structured security events from execution agent
+        if isinstance(execution_result, dict) and "security_events" in execution_result and isinstance(execution_result["security_events"], dict):
+            state["security_events"].update(execution_result["security_events"])
         
         if "error" in execution_result:
             logger.error(f"[{state['run_id']}] Execution failed: {execution_result['error']}")
@@ -242,6 +255,9 @@ def run_pipeline(
     Returns:
         Dictionary containing the final state with all agent outputs
     """
+    # Record pipeline start time for high-resolution latency measurement
+    start_time = time.perf_counter()
+    
     # Generate unique run ID
     run_id = f"RUN_{uuid.uuid4().hex[:8].upper()}"
     
@@ -256,6 +272,7 @@ def run_pipeline(
     # Check authentication if enabled
     authenticated, auth_error = check_authentication(config, auth_token=auth_token)
     if not authenticated:
+        elapsed_ms = max(0, int(round((time.perf_counter() - start_time) * 1000)))
         logger.error(f"[{run_id}] Authentication failed: {auth_error}")
         # Return error state without running pipeline
         return {
@@ -268,7 +285,13 @@ def run_pipeline(
             "run_id": run_id,
             "errors": [f"Authentication failed: {auth_error}"],
             "attack_injected": False,
-            "security_events": {"auth_success": False}
+            "security_events": {
+                "auth_success": False,
+                "permission_denied": False,
+                "input_validation_failed": False,
+                "output_validation_failed": False
+            },
+            "latency_ms": elapsed_ms
         }
     
     # Initialize state with security events tracking
@@ -287,7 +310,8 @@ def run_pipeline(
             "permission_denied": False,
             "input_validation_failed": False,
             "output_validation_failed": False
-        }
+        },
+        "latency_ms": 0
     }
     
     # Create and run the graph
@@ -295,10 +319,12 @@ def run_pipeline(
     
     try:
         final_state = graph.invoke(initial_state)
-        logger.info(f"[{run_id}] Pipeline completed successfully")
+        final_state["latency_ms"] = max(0, int(round((time.perf_counter() - start_time) * 1000)))
+        logger.info(f"[{run_id}] Pipeline completed successfully in {final_state['latency_ms']}ms")
         return final_state
     
     except Exception as e:
         logger.error(f"[{run_id}] Pipeline failed with exception: {e}")
         initial_state["errors"].append(f"Pipeline exception: {str(e)}")
+        initial_state["latency_ms"] = max(0, int(round((time.perf_counter() - start_time) * 1000)))
         return initial_state
